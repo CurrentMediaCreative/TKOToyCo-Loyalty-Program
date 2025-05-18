@@ -1,0 +1,15 @@
+This is a placeholder for the tray icon.
+
+In a real implementation, you would need to create a proper icon file (PNG or ICO) for the system tray.
+The icon should be:
+- 16x16 pixels for standard display
+- 32x32 pixels for high-DPI displays
+- Use the TKO brand colors: Keppel/Teal (#00B8A2), Sunglow/Yellow (#FFD23F), Pumpkin/Orange (#FF7C2A)
+
+The icon design should be simple and recognizable in the system tray, possibly showing:
+- A simplified TKO logo
+- A loyalty card icon
+- Or a simple "TKO" text with a distinctive background
+
+For development purposes, you can use a free icon from a library like Material Icons or Font Awesome,
+or create a simple custom icon using a tool like Figma, Adobe Illustrator, or even online icon generators.

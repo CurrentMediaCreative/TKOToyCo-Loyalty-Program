@@ -72,13 +72,13 @@ const mockData = {
     { name: "Lightweight", count: 350, color: "#FF7C2A" },
     { name: "Welterweight", count: 250, color: "#00B8A2" },
     { name: "Heavyweight", count: 150, color: "#0088A9" },
-    { name: "Champion", count: 45, color: "#5D3FD3" },
+    { name: "Reigning Champion", count: 45, color: "#5D3FD3" },
   ],
-  topRewards: [
-    { name: "Birthday Gift", redeemed: 87 },
-    { name: "10% Off Coupon", redeemed: 65 },
-    { name: "Free Shipping", redeemed: 52 },
-    { name: "Exclusive Toy", redeemed: 34 },
+  topBenefits: [
+    { name: "Exclusive Access", members: 87 },
+    { name: "Tier Discounts", members: 65 },
+    { name: "Free Shipping", members: 52 },
+    { name: "VIP Customer Service", members: 34 },
   ],
 };
 
@@ -224,14 +224,14 @@ const Dashboard: React.FC = () => {
                   <RewardsIcon sx={{ color: "#5D3FD3" }} />
                 </Box>
                 <Typography variant="h6" component="div">
-                  Rewards
+                  Benefits
                 </Typography>
               </Box>
               <Typography variant="h4" component="div">
                 238
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Redeemed this month
+                Active tier benefits
               </Typography>
             </CardContent>
           </Card>
@@ -295,7 +295,7 @@ const Dashboard: React.FC = () => {
           </Paper>
         </Grid>
 
-        {/* Tier Distribution & Top Rewards */}
+        {/* Tier Distribution & Top Benefits */}
         <Grid item xs={12} md={4}>
           <Grid container spacing={3} direction="column">
             <Grid item xs={12}>
@@ -359,11 +359,11 @@ const Dashboard: React.FC = () => {
             <Grid item xs={12}>
               <Paper sx={{ p: 2 }}>
                 <Typography variant="h6" component="h2" gutterBottom>
-                  Top Rewards
+                  Top Benefits
                 </Typography>
                 <List disablePadding>
-                  {mockData.topRewards.map((reward, index) => (
-                    <React.Fragment key={reward.name}>
+                  {mockData.topBenefits.map((benefit, index) => (
+                    <React.Fragment key={benefit.name}>
                       <ListItem
                         sx={{
                           py: 1,
@@ -377,13 +377,13 @@ const Dashboard: React.FC = () => {
                             fontSize="small"
                             sx={{ color: "#FFD23F", mr: 1 }}
                           />
-                          <Typography variant="body2">{reward.name}</Typography>
+                          <Typography variant="body2">{benefit.name}</Typography>
                         </Box>
                         <Typography variant="body2" fontWeight="medium">
-                          {reward.redeemed} redeemed
+                          {benefit.members} members
                         </Typography>
                       </ListItem>
-                      {index < mockData.topRewards.length - 1 && <Divider />}
+                      {index < mockData.topBenefits.length - 1 && <Divider />}
                     </React.Fragment>
                   ))}
                 </List>

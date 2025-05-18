@@ -43,7 +43,7 @@ const mockTiers = [
   {
     id: 2,
     name: "Lightweight",
-    spendThreshold: 1000,
+    spendThreshold: 1500,
     color: "#FF7C2A",
     benefits: [
       "Welcome gift",
@@ -57,7 +57,7 @@ const mockTiers = [
   {
     id: 3,
     name: "Welterweight",
-    spendThreshold: 3000,
+    spendThreshold: 5000,
     color: "#00B8A2",
     benefits: [
       "Welcome gift",
@@ -72,7 +72,7 @@ const mockTiers = [
   {
     id: 4,
     name: "Heavyweight",
-    spendThreshold: 5000,
+    spendThreshold: 25000,
     color: "#0088A9",
     benefits: [
       "Welcome gift",
@@ -88,8 +88,8 @@ const mockTiers = [
   },
   {
     id: 5,
-    name: "Champion",
-    spendThreshold: 10000,
+    name: "Reigning Champion",
+    spendThreshold: 0,
     color: "#5D3FD3",
     benefits: [
       "Welcome gift",
@@ -102,6 +102,7 @@ const mockTiers = [
       "Personal shopping assistant",
       "VIP customer service",
       "Annual gift",
+      "Invite-only exclusive benefits"
     ],
     customerCount: 45,
   },

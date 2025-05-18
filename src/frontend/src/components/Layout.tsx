@@ -21,8 +21,6 @@ import {
   Dashboard as DashboardIcon,
   People as PeopleIcon,
   EmojiEvents as TiersIcon,
-  CardGiftcard as RewardsIcon,
-  Receipt as TransactionsIcon,
   BarChart as ReportsIcon,
   Settings as SettingsIcon,
 } from "@mui/icons-material";
@@ -34,8 +32,6 @@ const navItems = [
   { text: "Dashboard", icon: <DashboardIcon />, path: "/dashboard" },
   { text: "Customers", icon: <PeopleIcon />, path: "/customers" },
   { text: "Tiers", icon: <TiersIcon />, path: "/tiers" },
-  { text: "Rewards", icon: <RewardsIcon />, path: "/rewards" },
-  { text: "Transactions", icon: <TransactionsIcon />, path: "/transactions" },
   { text: "Reports", icon: <ReportsIcon />, path: "/reports" },
   { text: "Settings", icon: <SettingsIcon />, path: "/settings" },
 ];

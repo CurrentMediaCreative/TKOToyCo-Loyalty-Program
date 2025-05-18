@@ -82,10 +82,12 @@ We are currently implementing the Frontend UI for the TKO Toy Co Loyalty Program
 
 ## Recent Changes
 
-1. **Scope Clarification**:
+1. **Scope Clarification Implementation**:
 
    - Removed transaction processing functionality as it's not part of the app's scope
    - Removed redeemable rewards functionality as it's not part of the app's scope
+   - Removed "Rewards" and "Transactions" navigation items from the sidebar in Layout.tsx
+   - Removed corresponding imports (RewardsIcon and TransactionsIcon) from Layout.tsx
    - Clarified that the app will simply pull total spend data from existing systems (Shopify/BinderPOS)
    - Updated wireframes to reflect the simplified scope
    - Removed transaction processing wireframe completely
@@ -120,6 +122,25 @@ We are currently implementing the Frontend UI for the TKO Toy Co Loyalty Program
    - Created login/logout functionality
    - Set up protected routes for authenticated users
    - Implemented mock authentication for development
+
+6. **Desktop Application Implementation**:
+   - Created Electron-based desktop application structure with dual-window architecture
+   - Implemented system tray integration with context menu for both windows
+   - Built popup window UI with customer lookup functionality
+   - Created customer information display with tier progress visualization
+   - Implemented "close to next tier" notification with spending recommendations
+   - Developed comprehensive admin dashboard with multiple sections:
+     - Dashboard with statistics and data visualization
+     - Customers management with search and filtering
+     - Tiers configuration with benefit management
+     - Reports with analytics and data export
+     - Settings for application configuration
+   - Implemented IPC communication between main process and renderer processes
+   - Created service layer with repository pattern for data access
+   - Implemented mock data service for development while waiting for API access
+   - Set up proper TypeScript interfaces for all data models
+   - Applied TKO branding with consistent theme and styling across both windows
+   - Implemented single instance lock mechanism to prevent multiple instances of the application from running simultaneously
 
 ## Active Decisions and Considerations
 
@@ -160,28 +181,41 @@ We are currently implementing the Frontend UI for the TKO Toy Co Loyalty Program
    - Enables future extensibility and independent development
    - Detailed documentation available in `memory-bank/integration/integration-approach.md`
 
-2. **Connect Frontend to Backend API**:
+2. **Desktop Application for POS Integration - Testing Phase**:
+
+   - Created Electron-based desktop application that runs locally on store computers
+   - Implemented popup functionality that displays customer loyalty information
+   - Built tier visualization with progress indicators and benefit reminders
+   - Developed "close to next tier" notifications with spending recommendations
+   - Created service layer with proper abstractions for eventual API integration
+   - Implemented with mock data while waiting for API access
+   - Successfully installed dependencies and resolved TypeScript errors
+   - Verified proper tray icon implementation
+   - Currently testing the application functionality
+   - Detailed implementation documentation available in `memory-bank/desktop-implementation-progress.md`
+
+3. **Connect Frontend to Backend API**:
 
    - Replace mock data with actual API calls
    - Implement API service layer in frontend
    - Add loading states and error handling for API requests
    - Ensure proper authentication token management
 
-3. **Implement Integration with External Systems**:
+4. **Implement Integration with External Systems**:
 
    - Create Shopify integration module with OAuth authentication
    - Develop BinderPOS integration module with API key authentication
    - Implement data synchronization service
    - Set up webhooks for Shopify and scheduled synchronization for BinderPOS
 
-4. **Develop Data Aggregation Logic**:
+5. **Develop Data Aggregation Logic**:
 
    - Create customer spend calculation service
    - Implement tier assignment rules
    - Set up data consistency checks
    - Create audit logging for data changes
 
-5. **Testing After Implementation**:
+6. **Testing After Implementation**:
    - Develop appropriate tests based on the actual implementation
    - Focus on testing the critical paths and integration points
    - Ensure the application works end-to-end with real data

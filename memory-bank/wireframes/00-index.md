@@ -46,6 +46,13 @@ This directory contains wireframes for the key interfaces of the TKO Toy Co Loya
    - Bulk operations
    - _Note: To be implemented after MVP, starting with loyalty ID only_
 
+7. [Desktop Application Popup UI](09-desktop-popup.md)
+   - Popup interface for POS integration
+   - Customer loyalty information display
+   - Tier progress visualization
+   - Benefit reminders and tier-up notifications
+   - Quick actions for store staff
+
 ## Customer Interfaces
 
 8. [Customer Portal (Future Phase)](08-customer-portal.md)
