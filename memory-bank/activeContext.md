@@ -194,12 +194,15 @@ We are currently implementing the Frontend UI for the TKO Toy Co Loyalty Program
    - Currently testing the application functionality
    - Detailed implementation documentation available in `memory-bank/desktop-implementation-progress.md`
 
-3. **Connect Frontend to Backend API**:
+3. **Connect Frontend and Desktop App to Backend API**:
 
    - Replace mock data with actual API calls
-   - Implement API service layer in frontend
+   - Implement API service layer in frontend and desktop app
    - Add loading states and error handling for API requests
    - Ensure proper authentication token management
+   - Create data fetching and caching mechanisms
+   - Implement offline support with local data storage
+   - Set up data synchronization between backend and desktop app
 
 4. **Implement Integration with External Systems**:
 

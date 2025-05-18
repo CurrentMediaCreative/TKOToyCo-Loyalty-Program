@@ -30,6 +30,17 @@ The TKO Toy Co Loyalty Program is built using a modern, scalable technology stac
 | Axios       | HTTP client          | Promise-based, interceptors, request/response transformation                   |
 | Chart.js    | Data visualization   | Flexible charting library for analytics dashboards                             |
 
+### Desktop Application Technologies
+
+| Technology    | Purpose                    | Justification                                                                |
+| ------------- | -------------------------- | ---------------------------------------------------------------------------- |
+| Electron      | Desktop framework          | Cross-platform support, web technologies for desktop, system tray integration |
+| React         | UI library                 | Reuse of frontend components, consistent development experience              |
+| TypeScript    | Programming language       | Type safety, better IDE support, improved maintainability                    |
+| Material-UI   | Component library          | Consistent design system with the web application                            |
+| Electron Store| Local storage              | Persistent storage for settings and offline data                             |
+| IPC           | Process communication      | Secure communication between main and renderer processes                     |
+
 ### Integration Technologies
 
 | Technology            | Purpose                | Justification                                    |

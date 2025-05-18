@@ -13,6 +13,7 @@ flowchart TD
     subgraph "Presentation Layer"
         A[Admin Dashboard] --> |API Calls| D[API Gateway]
         B[Customer Portal] --> |API Calls| D
+        C[Desktop Application] --> |API Calls| D
     end
 
     subgraph "API Layer"
@@ -376,6 +377,15 @@ sequenceDiagram
    - Implement transaction import/export
    - Create customer lookup functionality
    - Develop card scanning interface
+
+3. **Desktop Application Implementation**
+   - Create Electron-based application with dual-window architecture
+   - Implement system tray integration with context menu
+   - Develop popup window for customer loyalty information
+   - Create admin dashboard for comprehensive management
+   - Implement IPC communication between main and renderer processes
+   - Create service layer with repository pattern for data access
+   - Implement single instance lock mechanism to prevent multiple instances
 
 ### Tier Management Implementation
 

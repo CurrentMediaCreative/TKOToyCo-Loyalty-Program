@@ -44,6 +44,7 @@ TKO Toy Co is a specialty retailer of Trading Card Game (TCG) products, focusing
 
    - Seamless integration with Shopify for online purchases
    - Integration with POS Binder for in-store transactions
+   - Desktop application for in-store customer lookup and loyalty information
    - Email notification system for rewards and tier changes
 
 6. **Admin Dashboard**
