@@ -1,0 +1,124 @@
+# Cline Rules for TKO Toy Co Loyalty Program
+
+## Task Context Management
+
+1. **Memory Bank First**: Always read ALL memory bank files at the start of EVERY task.
+
+   - `projectbrief.md` - Core requirements and project scope
+   - `productContext.md` - Business context and user experience goals
+   - `systemPatterns.md` - Architecture and design patterns
+   - `techContext.md` - Technology stack and constraints
+   - `activeContext.md` - Current work focus and recent changes
+   - `progress.md` - Project status and known issues
+
+2. **Task Transitions**: When completing one significant task and moving to another:
+
+   - Update relevant memory bank files, especially `activeContext.md` and `progress.md`
+   - Use the `new_task` tool to create a new task with proper context
+   - Summarize completed work and pending items in the transition
+
+3. **Context Window Management**: Monitor and manage context window usage:
+
+   - Regularly check context usage percentage in environment details
+   - Create new task contexts at logical boundaries between work phases
+   - Proactively suggest new task creation when usage exceeds 70-80%
+   - Always create a new task after completing a major milestone
+   - Ensure memory bank files are updated before transitioning
+
+4. **Context Preservation**: Maintain awareness of:
+   - Current project state
+   - Recent code changes
+   - Architectural decisions
+   - Implementation patterns
+   - Outstanding issues
+
+## Development Workflow
+
+1. **Communication First**: Before implementing solutions:
+
+   - Discuss approach with user
+   - Clarify requirements
+   - Present options when appropriate
+   - Get confirmation before extensive implementation
+
+2. **Incremental Development**:
+
+   - Work in small, testable increments
+   - Commit logical units of work
+   - Validate each step before proceeding
+   - Maintain a clear development path
+
+3. **Documentation Updates**:
+   - Update memory bank files when discovering new patterns
+   - Document significant changes in code
+   - Keep API documentation current
+   - Ensure README reflects current setup instructions
+
+## Code Standards
+
+1. **Architecture Adherence**:
+
+   - Follow the established service-oriented architecture
+   - Implement the defined design patterns (Repository, Service, Strategy, Observer, Adapter)
+   - Maintain separation of concerns
+   - Respect the defined component relationships
+
+2. **Technology Stack**:
+
+   - Backend: Node.js, Express.js, PostgreSQL, Redis, JWT, Sequelize
+   - Frontend: React, TypeScript, Material-UI, Redux, Axios, Chart.js
+   - Integration: Shopify API, REST APIs, Webhooks, SendGrid, NFC/Barcode Libraries
+   - DevOps: Docker, GitHub Actions, AWS/Azure, Jest, ESLint/Prettier, Swagger
+
+3. **Code Quality**:
+   - Follow TypeScript best practices
+   - Maintain consistent code style
+   - Write comprehensive tests
+   - Use meaningful variable and function names
+   - Include appropriate comments and documentation
+
+## Integration Requirements
+
+1. **External Systems**:
+
+   - Shopify integration for online purchases
+   - POS Binder integration for in-store transactions
+   - Email notification system
+
+2. **API Design**:
+   - RESTful API structure
+   - Consistent response formats
+   - Proper error handling
+   - Authentication and authorization
+
+## MCP Utilization
+
+1. **DeepSeek-Claude MCP**:
+
+   - Use for complex reasoning tasks
+   - Leverage for architectural decisions
+   - Apply for problem-solving when standard approaches are insufficient
+   - Utilize for generating high-quality documentation
+
+2. **MCP Response Handling Process**:
+   - After sending a request to the MCP, execute the wait script: `node scripts/wait.js`
+   - The script will wait for 2 minutes (default) before completion
+   - After the wait completes, check for the MCP response
+   - If no response is available yet, run the wait script again
+   - Repeat until a response is received
+   - This prevents excessive checking and ensures efficient MCP utilization
+
+## Task Completion Criteria
+
+1. **Verification Steps**:
+
+   - Code runs without errors
+   - Tests pass
+   - Documentation is updated
+   - User confirms acceptance
+
+2. **Handoff Process**:
+   - Summarize completed work
+   - Document any known issues
+   - Provide clear next steps
+   - Update memory bank files
