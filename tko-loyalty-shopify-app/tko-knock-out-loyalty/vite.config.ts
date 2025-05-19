@@ -5,23 +5,17 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 installGlobals({ nativeFetch: true });
 
-// Simplified configuration to avoid URL parsing issues
+// Disable HMR in production to avoid DNS lookup issues
 const isLocalhost = !process.env.SHOPIFY_APP_URL || process.env.SHOPIFY_APP_URL.includes('localhost');
 
-let hmrConfig;
+// Only enable HMR for local development
+let hmrConfig: any = false;
 if (isLocalhost) {
   hmrConfig = {
     protocol: "ws",
     host: "localhost",
     port: 64999,
     clientPort: 64999,
-  };
-} else {
-  hmrConfig = {
-    protocol: "wss",
-    host: "tkotoyco-loyalty-program.onrender.com",
-    port: parseInt(process.env.FRONTEND_PORT!) || 8002,
-    clientPort: 443,
   };
 }
 
