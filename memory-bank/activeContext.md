@@ -118,6 +118,7 @@ We are currently implementing the Frontend UI for the TKO Toy Co Loyalty Program
    - Created consistent visual language across components
 
 5. **Authentication Flow**:
+
    - Implemented authentication context with React Context API
    - Created login/logout functionality
    - Set up protected routes for authenticated users
@@ -206,7 +207,13 @@ We are currently implementing the Frontend UI for the TKO Toy Co Loyalty Program
 
 4. **Implement Integration with External Systems**:
 
-   - Create Shopify integration module with OAuth authentication
+   - Shopify Integration Progress:
+     - Created Shopify API client in `src/backend/api-clients/shopify.ts`
+     - Implemented customer data retrieval functionality
+     - Created test scripts for Shopify API in `src/backend/scripts/test-shopify.js`
+     - Successfully tested connection with real Shopify store
+     - Verified ability to retrieve customer data and total spend
+     - Next steps: Register integration service in DI container, update controllers, create sync process
    - Develop BinderPOS integration module with API key authentication
    - Implement data synchronization service
    - Set up webhooks for Shopify and scheduled synchronization for BinderPOS

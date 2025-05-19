@@ -1,104 +1,74 @@
 # TKO Toy Co Loyalty Program
 
-A premium loyalty program system for TKO Toy Co, designed to track customer spending across in-store and online channels, assign loyalty tiers, and provide exclusive rewards and benefits.
+A desktop application for managing TKO Toy Co's customer loyalty program.
 
-## Project Overview
+## Overview
 
-The TKO Toy Co Loyalty Program is a custom-built solution that integrates with existing Shopify and POS Binder systems to create a seamless loyalty experience for both staff and customers. The program features physical membership cards, tier-based rewards, and a comprehensive admin dashboard for program management.
+This application connects to Shopify to retrieve customer data, calculate loyalty tiers based on customer spending, and provide a simple interface for looking up customer information.
 
-### Key Features
+## Features
 
-- Customer spending tracking across online and in-store channels
-- Tier-based loyalty system with configurable thresholds
-- Physical membership cards with NFC/barcode capabilities
-- Reward management and distribution
-- Admin dashboard for program configuration and analytics
-- Seamless integration with Shopify and POS Binder
-- Email notifications for tier changes and rewards
+- **Customer Lookup**: Search for customers by name, email, or phone number
+- **Tier Management**: Automatically assign customers to loyalty tiers based on their total spend
+- **Dashboard**: View key metrics like customer distribution by tier and total revenue
+- **Shopify Integration**: Direct connection to Shopify for real-time customer data
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v16+)
-- npm or Yarn
-- PostgreSQL (v13+)
-- Redis
-- Git
+- Node.js 16+
+- npm or yarn
+- A Shopify store with API access
 
 ### Installation
 
-1. Clone the repository:
-
-   ```
-   git clone https://github.com/TKOToyCo/loyalty-program.git
-   cd loyalty-program
-   ```
-
-2. Install dependencies:
-
+1. Clone this repository
+2. Copy `.env.example` to `.env` and fill in your Shopify API credentials
+3. Install dependencies:
    ```
    npm install
    ```
 
-3. Set up environment variables:
+### Development
 
-   ```
-   cp .env.example .env
-   ```
-
-   Edit the `.env` file with your configuration settings.
-
-4. Set up the database:
-
-   ```
-   npm run db:setup
-   ```
-
-5. Start the development server:
-   ```
-   npm run dev
-   ```
-
-## Project Structure
+Run the application in development mode:
 
 ```
-loyalty-program/
-├── memory-bank/          # Project documentation and context
-├── src/                  # Source code
-│   ├── backend/          # Backend API and services
-│   ├── frontend/         # React frontend application
-│   └── shared/           # Shared code and types
-├── scripts/              # Utility scripts
-├── config/               # Configuration files
-└── tests/                # Test files
+npm run dev
 ```
 
-## Memory Bank
+This will:
 
-This project uses a Memory Bank approach for comprehensive documentation. The Memory Bank contains all project context, decisions, and progress tracking.
+- Compile the TypeScript code for the main process
+- Start the React development server for the renderer process
+- Launch Electron pointing to the development server
 
-Key Memory Bank files:
+### Building
 
-- `memory-bank/projectbrief.md` - Core requirements and goals
-- `memory-bank/productContext.md` - Business context and user experience goals
-- `memory-bank/systemPatterns.md` - System architecture and design patterns
-- `memory-bank/techContext.md` - Technology stack and technical decisions
-- `memory-bank/activeContext.md` - Current work focus and active decisions
-- `memory-bank/progress.md` - Project status and milestone tracking
+Build the application for production:
 
-## Development Workflow
+```
+npm run build
+```
 
-1. Create a feature branch from `main`
-2. Implement your changes
-3. Write tests for your changes
-4. Submit a pull request
-5. After review and approval, merge to `main`
+Create a distributable package:
 
-## License
+```
+npm run dist
+```
 
-Proprietary - All rights reserved by TKO Toy Co.
+## Application Structure
 
-## Contact
+- `src/desktop/src/main/` - Electron main process code
+- `src/desktop/src/renderer/` - React application for the UI
+- `src/desktop/src/main/models/` - Data models
+- `src/desktop/src/main/services/` - Services for external API communication
 
-For questions or support, contact the development team at [dev@tkotoyco.com](mailto:dev@tkotoyco.com).
+## Shopify Integration
+
+The application connects directly to the Shopify API to retrieve customer data. It requires the following environment variables:
+
+- `SHOPIFY_SHOP_URL`: Your Shopify store URL (e.g., your-store.myshopify.com)
+- `SHOPIFY_ACCESS_TOKEN`: A Shopify Admin API access token with permissions to read customers and orders
+- `SHOPIFY_API_VERSION`: The Shopify API version to use (e.g., 2023-04)

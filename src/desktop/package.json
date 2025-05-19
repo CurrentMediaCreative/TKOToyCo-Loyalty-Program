@@ -5,16 +5,15 @@
   "main": "dist/main/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "concurrently \"npm run watch:main\" \"npm run start:renderer\" \"npm run electron-dev\"",
-    "electron-dev": "wait-on http://localhost:3000 && electron .",
+    "dev": "concurrently \"npm run watch:main\" \"npm run watch:renderer\" \"npm run electron-dev\"",
+    "electron-dev": "electron .",
     "watch:main": "tsc -p electron-tsconfig.json -w",
     "watch:renderer": "tsc -p tsconfig.json -w",
-    "start:renderer": "react-scripts start",
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "tsc -p electron-tsconfig.json",
-    "build:renderer": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
+    "build:renderer": "tsc -p tsconfig.json && npm run copy-assets",
+    "copy-assets": "copyfiles -u 1 \"src/renderer/**/*.{html,css,svg}\" dist/renderer",
+    "test": "jest",
     "postinstall": "electron-builder install-app-deps",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
@@ -32,17 +31,18 @@
     "electron-store": "^8.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1"
+    "sql.js": "^1.13.0"
   },
   "devDependencies": {
     "@types/node": "^18.16.3",
     "@types/react": "^18.2.6",
     "@types/react-dom": "^18.2.4",
     "concurrently": "^8.0.1",
+    "copyfiles": "^2.4.1",
     "electron": "^24.3.0",
     "electron-builder": "^23.6.0",
-    "typescript": "^4.9.5",
-    "wait-on": "^7.0.1"
+    "jest": "^29.5.0",
+    "typescript": "^4.9.5"
   },
   "build": {
     "appId": "com.tkotoyco.loyalty",

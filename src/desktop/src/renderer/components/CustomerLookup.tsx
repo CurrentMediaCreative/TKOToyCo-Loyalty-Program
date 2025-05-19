@@ -1,26 +1,25 @@
-import React, { useState } from 'react';
-import { 
-  Box, 
-  TextField, 
-  Button, 
-  Typography, 
-  Paper, 
+import React, { useState } from "react";
+import {
+  Box,
+  TextField,
+  Button,
+  Typography,
+  Paper,
   CircularProgress,
   InputAdornment,
-  IconButton
-} from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import CloseIcon from '@mui/icons-material/Close';
-import { getCustomerService } from '../services/ServiceFactory';
-import { Customer } from '../models/Customer';
-import CustomerPopup from '../components/CustomerPopup';
+  IconButton,
+} from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
+import CloseIcon from "@mui/icons-material/Close";
+import { Customer } from "../../main/models/Customer";
+import CustomerPopup from "../components/CustomerPopup";
 
 /**
  * Customer lookup component
  * Provides a search interface for looking up customers by phone number
  */
 const CustomerLookup: React.FC = () => {
-  const [phoneNumber, setPhoneNumber] = useState<string>('');
+  const [phoneNumber, setPhoneNumber] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -29,7 +28,9 @@ const CustomerLookup: React.FC = () => {
    * Handle phone number input change
    * @param event The change event
    */
-  const handlePhoneNumberChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhoneNumberChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     setPhoneNumber(event.target.value);
     if (error) setError(null);
   };
@@ -39,25 +40,30 @@ const CustomerLookup: React.FC = () => {
    */
   const handleSearch = async () => {
     // Basic validation
-    if (!phoneNumber || phoneNumber.trim() === '') {
-      setError('Please enter a phone number');
+    if (!phoneNumber || phoneNumber.trim() === "") {
+      setError("Please enter a phone number");
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
-      
-      const customerService = getCustomerService();
-      const result = await customerService.getCustomerByPhone(phoneNumber);
-      
-      if (result) {
-        setCustomer(result);
+
+      // Use the IPC bridge directly
+      if (!window.api) {
+        setError("API not available");
+        return;
+      }
+
+      const result = await window.api.getCustomerByPhone(phoneNumber);
+
+      if (result.success && result.customer) {
+        setCustomer(result.customer);
       } else {
-        setError('Customer not found');
+        setError(result.error || "Customer not found");
       }
     } catch (err) {
-      setError('An error occurred while searching for the customer');
+      setError("An error occurred while searching for the customer");
       console.error(err);
     } finally {
       setLoading(false);
@@ -68,7 +74,7 @@ const CustomerLookup: React.FC = () => {
    * Handle clear button click
    */
   const handleClear = () => {
-    setPhoneNumber('');
+    setPhoneNumber("");
     setCustomer(null);
     setError(null);
   };
@@ -78,7 +84,7 @@ const CustomerLookup: React.FC = () => {
    * @param event The key press event
    */
   const handleKeyPress = (event: React.KeyboardEvent) => {
-    if (event.key === 'Enter') {
+    if (event.key === "Enter") {
       handleSearch();
     }
   };
@@ -95,35 +101,35 @@ const CustomerLookup: React.FC = () => {
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        bgcolor: 'background.default',
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        bgcolor: "background.default",
         borderRadius: 2,
-        overflow: 'hidden',
+        overflow: "hidden",
       }}
     >
       <Paper
         elevation={0}
         sx={{
           p: 2,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          bgcolor: 'primary.main',
-          color: 'primary.contrastText',
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          bgcolor: "primary.main",
+          color: "primary.contrastText",
           borderRadius: 0,
         }}
       >
         <Typography variant="h6" component="h1">
           TKO Loyalty
         </Typography>
-        <IconButton 
-          size="small" 
+        <IconButton
+          size="small"
           onClick={handleClose}
-          sx={{ color: 'primary.contrastText' }}
+          sx={{ color: "primary.contrastText" }}
         >
           <CloseIcon />
         </IconButton>
@@ -133,7 +139,7 @@ const CustomerLookup: React.FC = () => {
         <Typography variant="h5" component="h2" gutterBottom>
           Customer Lookup
         </Typography>
-        
+
         <Box sx={{ mb: 3 }}>
           <TextField
             fullWidth
@@ -161,50 +167,32 @@ const CustomerLookup: React.FC = () => {
             }}
           />
         </Box>
-        
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 3 }}>
           <Button
             variant="contained"
             color="primary"
             onClick={handleSearch}
             disabled={loading}
-            startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SearchIcon />}
+            startIcon={
+              loading ? (
+                <CircularProgress size={20} color="inherit" />
+              ) : (
+                <SearchIcon />
+              )
+            }
             sx={{ minWidth: 120 }}
           >
-            {loading ? 'Searching...' : 'Search'}
+            {loading ? "Searching..." : "Search"}
           </Button>
         </Box>
       </Box>
 
-      {customer && (
-        <CustomerPopup customer={customer} onClose={handleClear} />
-      )}
+      {customer && <CustomerPopup customer={customer} onClose={handleClear} />}
     </Box>
   );
 };
 
-// Add TypeScript interface for the window.api object
-declare global {
-  interface Window {
-    api?: {
-      showMainWindow: () => void;
-      hideMainWindow: () => void;
-      showPopupWindow: () => void;
-      hidePopupWindow: () => void;
-      positionPopupWindow: (x: number, y: number) => void;
-      lookupCustomer: (phoneNumber: string) => void;
-      openCustomerInMain: (customerId: string) => void;
-      applyDiscount: (customerId: string, discountType: string) => void;
-      syncData: () => void;
-      setAutoLaunch: (enabled: boolean) => void;
-      getSettings: () => Promise<any>;
-      onCustomerData: (callback: (customer: any) => void) => void;
-      onNavigateToCustomer: (callback: (customerId: string) => void) => void;
-      onSyncComplete: (callback: (result: any) => void) => void;
-      onError: (callback: (error: string) => void) => void;
-      removeAllListeners: (channel: string) => void;
-    };
-  }
-}
+// Window API interface is now defined in global.d.ts
 
 export default CustomerLookup;

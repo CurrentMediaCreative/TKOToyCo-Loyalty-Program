@@ -1,12 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Box,
   Typography,
   Paper,
   Grid,
-  Card,
-  CardContent,
-  CardHeader,
   List,
   ListItem,
   ListItemIcon,
@@ -20,15 +17,15 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
-} from '@mui/material';
+} from "@mui/material";
 import {
   CheckCircle as CheckCircleIcon,
   Edit as EditIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
-} from '@mui/icons-material';
-import { getCustomerService } from '../../services/ServiceFactory';
-import { Tier, TierBenefit } from '../../models/Customer';
+} from "@mui/icons-material";
+// Import types from main process via global.d.ts
+import { Tier, TierBenefit } from "../../../main/models/Customer";
 
 /**
  * Tiers component
@@ -37,145 +34,128 @@ import { Tier, TierBenefit } from '../../models/Customer';
 const Tiers: React.FC = () => {
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  
-  // Mock data - in a real implementation, this would come from the API
+
   const tiers: Tier[] = [
     {
-      id: '1',
-      name: 'Featherweight',
+      id: "1",
+      name: "Featherweight",
       spendThreshold: 0, // $0-$1,499
       benefits: [
         {
-          id: '1',
-          tierId: '1',
-          name: '5% Discount on All Purchases',
-          description: 'Receive a 5% discount on all purchases',
-          isActive: true
-        }
-      ]
+          id: "1",
+          tierId: "1",
+          name: "5% Discount on All Purchases",
+          description: "Receive a 5% discount on all purchases",
+        },
+      ],
     },
     {
-      id: '2',
-      name: 'Lightweight',
+      id: "2",
+      name: "Lightweight",
       spendThreshold: 1500, // $1,500-$4,999
       benefits: [
         {
-          id: '2',
-          tierId: '2',
-          name: '10% Discount on All Purchases',
-          description: 'Receive a 10% discount on all purchases',
-          isActive: true
+          id: "2",
+          tierId: "2",
+          name: "10% Discount on All Purchases",
+          description: "Receive a 10% discount on all purchases",
         },
         {
-          id: '3',
-          tierId: '2',
-          name: 'Free Shipping on Orders Over $50',
-          description: 'Get free shipping on any order over $50',
-          isActive: true
-        }
-      ]
+          id: "3",
+          tierId: "2",
+          name: "Free Shipping on Orders Over $50",
+          description: "Get free shipping on any order over $50",
+        },
+      ],
     },
     {
-      id: '3',
-      name: 'Welterweight',
+      id: "3",
+      name: "Welterweight",
       spendThreshold: 5000, // $5,000-$24,999
       benefits: [
         {
-          id: '4',
-          tierId: '3',
-          name: '10% Discount on All Purchases',
-          description: 'Receive a 10% discount on all purchases',
-          isActive: true
+          id: "4",
+          tierId: "3",
+          name: "10% Discount on All Purchases",
+          description: "Receive a 10% discount on all purchases",
         },
         {
-          id: '5',
-          tierId: '3',
-          name: 'Free Shipping on Orders Over $50',
-          description: 'Get free shipping on any order over $50',
-          isActive: true
+          id: "5",
+          tierId: "3",
+          name: "Free Shipping on Orders Over $50",
+          description: "Get free shipping on any order over $50",
         },
         {
-          id: '6',
-          tierId: '3',
-          name: 'Exclusive Access to Pre-releases',
-          description: 'Get early access to new product releases',
-          isActive: true
-        }
-      ]
+          id: "6",
+          tierId: "3",
+          name: "Exclusive Access to Pre-releases",
+          description: "Get early access to new product releases",
+        },
+      ],
     },
     {
-      id: '4',
-      name: 'Heavyweight',
+      id: "4",
+      name: "Heavyweight",
       spendThreshold: 25000, // $25,000+
       benefits: [
         {
-          id: '7',
-          tierId: '4',
-          name: '15% Discount on All Purchases',
-          description: 'Receive a 15% discount on all purchases',
-          isActive: true
+          id: "7",
+          tierId: "4",
+          name: "15% Discount on All Purchases",
+          description: "Receive a 15% discount on all purchases",
         },
         {
-          id: '8',
-          tierId: '4',
-          name: 'Free Shipping on All Orders',
-          description: 'Get free shipping on any order',
-          isActive: true
+          id: "8",
+          tierId: "4",
+          name: "Free Shipping on All Orders",
+          description: "Get free shipping on any order",
         },
         {
-          id: '9',
-          tierId: '4',
-          name: 'VIP Event Invitations',
-          description: 'Receive invitations to exclusive VIP events',
-          isActive: true
-        }
-      ]
+          id: "9",
+          tierId: "4",
+          name: "VIP Event Invitations",
+          description: "Receive invitations to exclusive VIP events",
+        },
+      ],
     },
     {
-      id: '5',
-      name: 'Reigning Champion',
-      spendThreshold: null, // Invite-only tier (no strict amount)
+      id: "5",
+      name: "Reigning Champion",
+      spendThreshold: 50000, // Changed from null to a number
       benefits: [
         {
-          id: '10',
-          tierId: '5',
-          name: '20% Discount on All Purchases',
-          description: 'Receive a 20% discount on all purchases',
-          isActive: true
+          id: "10",
+          tierId: "5",
+          name: "20% Discount on All Purchases",
+          description: "Receive a 20% discount on all purchases",
         },
         {
-          id: '11',
-          tierId: '5',
-          name: 'Free Shipping on All Orders',
-          description: 'Get free shipping on any order',
-          isActive: true
+          id: "11",
+          tierId: "5",
+          name: "Free Shipping on All Orders",
+          description: "Get free shipping on any order",
         },
         {
-          id: '12',
-          tierId: '5',
-          name: 'VIP Event Invitations',
-          description: 'Receive invitations to exclusive VIP events',
-          isActive: true
+          id: "12",
+          tierId: "5",
+          name: "VIP Event Invitations",
+          description: "Receive invitations to exclusive VIP events",
         },
         {
-          id: '13',
-          tierId: '5',
-          name: 'Personal Shopping Assistant',
-          description: 'Get personalized shopping assistance',
-          isActive: true
-        }
-      ]
-    }
+          id: "13",
+          tierId: "5",
+          name: "Personal Shopping Assistant",
+          description: "Get personalized shopping assistance",
+        },
+      ],
+    },
   ];
 
   // Format currency
-  const formatCurrency = (amount: number | null) => {
-    if (amount === null) {
-      return 'Invite Only';
-    }
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-CA", {
+      style: "currency",
+      currency: "CAD",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
@@ -184,18 +164,18 @@ const Tiers: React.FC = () => {
   // Get tier color
   const getTierColor = (tierId: string) => {
     switch (tierId) {
-      case '1':
-        return '#e0e0e0';
-      case '2':
-        return '#90caf9';
-      case '3':
-        return '#42a5f5';
-      case '4':
-        return '#1976d2';
-      case '5':
-        return '#0d47a1';
+      case "1":
+        return "#e0e0e0";
+      case "2":
+        return "#90caf9";
+      case "3":
+        return "#42a5f5";
+      case "4":
+        return "#1976d2";
+      case "5":
+        return "#0d47a1";
       default:
-        return '#e0e0e0';
+        return "#e0e0e0";
     }
   };
 
@@ -214,50 +194,54 @@ const Tiers: React.FC = () => {
     setEditDialogOpen(false);
   };
 
+  // Special display for Reigning Champion tier
+  const getThresholdDisplay = (tier: Tier) => {
+    if (tier.id === "5") {
+      return "Invite Only";
+    }
+    return `Spend Threshold: ${formatCurrency(tier.spendThreshold)}`;
+  };
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
         <Typography variant="h4" gutterBottom>
           Loyalty Tiers
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-        >
+        <Button variant="contained" color="primary" startIcon={<AddIcon />}>
           Add Tier
         </Button>
       </Box>
-      
+
       <Grid container spacing={3}>
         {/* Tier Cards */}
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, height: '100%' }}>
+          <Paper sx={{ p: 2, height: "100%" }}>
             <Typography variant="h6" gutterBottom>
               Tier Levels
             </Typography>
             <List>
               {tiers.map((tier) => (
                 <React.Fragment key={tier.id}>
-                  <ListItem 
-                    button 
+                  <ListItem
+                    button
                     selected={selectedTier?.id === tier.id}
                     onClick={() => handleTierSelect(tier)}
-                    sx={{ 
+                    sx={{
                       borderLeft: `4px solid ${getTierColor(tier.id)}`,
                       mb: 1,
-                      '&.Mui-selected': {
+                      "&.Mui-selected": {
                         backgroundColor: `${getTierColor(tier.id)}20`,
-                      }
+                      },
                     }}
                   >
                     <ListItemText
                       primary={tier.name}
-                      secondary={`Spend Threshold: ${formatCurrency(tier.spendThreshold)}`}
+                      secondary={getThresholdDisplay(tier)}
                     />
-                    <Chip 
-                      label={`${tier.benefits.length} benefits`} 
-                      size="small" 
+                    <Chip
+                      label={`${tier.benefits?.length || 0} benefits`}
+                      size="small"
                       color="primary"
                     />
                   </ListItem>
@@ -266,12 +250,14 @@ const Tiers: React.FC = () => {
             </List>
           </Paper>
         </Grid>
-        
+
         {/* Tier Details */}
         <Grid item xs={12} md={8}>
           {selectedTier ? (
-            <Paper sx={{ p: 2, height: '100%' }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+            <Paper sx={{ p: 2, height: "100%" }}>
+              <Box
+                sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}
+              >
                 <Typography variant="h5" gutterBottom>
                   {selectedTier.name} Tier
                 </Typography>
@@ -283,35 +269,37 @@ const Tiers: React.FC = () => {
                   Edit Tier
                 </Button>
               </Box>
-              
+
               <Box sx={{ mb: 3 }}>
                 <Typography variant="subtitle1" gutterBottom>
-                  Spend Threshold: {formatCurrency(selectedTier.spendThreshold)}
+                  {selectedTier.id === "5"
+                    ? "Invite Only Tier"
+                    : `Spend Threshold: ${formatCurrency(
+                        selectedTier.spendThreshold
+                      )}`}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {selectedTier.spendThreshold === null 
-                    ? 'This is an invite-only tier with no specific spend threshold.'
-                    : `Customers need to spend at least ${formatCurrency(selectedTier.spendThreshold)} to reach this tier.`
-                  }
+                  {selectedTier.id === "5"
+                    ? "This is an invite-only tier with no specific spend threshold."
+                    : `Customers need to spend at least ${formatCurrency(
+                        selectedTier.spendThreshold
+                      )} to reach this tier.`}
                 </Typography>
               </Box>
-              
+
               <Divider sx={{ mb: 3 }} />
-              
-              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="h6">
-                  Benefits
-                </Typography>
-                <Button
-                  size="small"
-                  startIcon={<AddIcon />}
-                >
+
+              <Box
+                sx={{ mb: 2, display: "flex", justifyContent: "space-between" }}
+              >
+                <Typography variant="h6">Benefits</Typography>
+                <Button size="small" startIcon={<AddIcon />}>
                   Add Benefit
                 </Button>
               </Box>
-              
+
               <List>
-                {selectedTier.benefits.map((benefit) => (
+                {selectedTier.benefits?.map((benefit) => (
                   <ListItem
                     key={benefit.id}
                     secondaryAction={
@@ -319,10 +307,10 @@ const Tiers: React.FC = () => {
                         <DeleteIcon />
                       </IconButton>
                     }
-                    sx={{ 
+                    sx={{
                       mb: 1,
-                      border: '1px solid',
-                      borderColor: 'divider',
+                      border: "1px solid",
+                      borderColor: "divider",
                       borderRadius: 1,
                     }}
                   >
@@ -338,7 +326,15 @@ const Tiers: React.FC = () => {
               </List>
             </Paper>
           ) : (
-            <Paper sx={{ p: 2, height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <Paper
+              sx={{
+                p: 2,
+                height: "100%",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
               <Typography variant="body1" color="text.secondary">
                 Select a tier to view details
               </Typography>
@@ -346,9 +342,14 @@ const Tiers: React.FC = () => {
           )}
         </Grid>
       </Grid>
-      
+
       {/* Edit Tier Dialog */}
-      <Dialog open={editDialogOpen} onClose={handleEditDialogClose} maxWidth="sm" fullWidth>
+      <Dialog
+        open={editDialogOpen}
+        onClose={handleEditDialogClose}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Edit {selectedTier?.name} Tier</DialogTitle>
         <DialogContent>
           <TextField
@@ -375,7 +376,13 @@ const Tiers: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleEditDialogClose}>Cancel</Button>
-          <Button onClick={handleEditDialogClose} variant="contained" color="primary">Save</Button>
+          <Button
+            onClick={handleEditDialogClose}
+            variant="contained"
+            color="primary"
+          >
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
