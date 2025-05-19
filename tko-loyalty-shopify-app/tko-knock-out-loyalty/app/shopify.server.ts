@@ -7,21 +7,14 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 
-// Extract hostname from URL to avoid DNS lookup issues
+// Ensure we have a valid URL with protocol for Shopify API
 const getAppUrl = () => {
   const url = process.env.SHOPIFY_APP_URL || "";
-  // If URL already doesn't have protocol, return as is
-  if (!url.includes("://")) return url;
-  
-  try {
-    // Parse the URL and return just the hostname
-    const parsedUrl = new URL(url);
-    return parsedUrl.host;
-  } catch (e) {
-    // If URL parsing fails, return the original URL
-    console.error("Failed to parse SHOPIFY_APP_URL:", e);
-    return url;
+  // If no protocol, add https://
+  if (!url.includes("://")) {
+    return `https://${url}`;
   }
+  return url; // Return the full URL with protocol
 };
 
 const shopify = shopifyApp({
