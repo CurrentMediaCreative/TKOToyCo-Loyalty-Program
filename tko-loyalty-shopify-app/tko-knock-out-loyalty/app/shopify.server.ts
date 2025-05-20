@@ -26,6 +26,7 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.ShopifyAdmin,
+  adminApiAccessToken: process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN,
   future: {
     unstable_newEmbeddedAuthStrategy: true,
     removeRest: true,
