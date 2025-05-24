@@ -9,7 +9,7 @@ handle = "tko-loyalty-program"
 [build]
 automatically_update_urls_on_dev = true
 include_config_on_deploy = true
-dev_store_url = "tcgguys.myshopify.com"
+dev_store_url = "82cc2c.myshopify.com"
 
 [webhooks]
 api_version = "2025-04"

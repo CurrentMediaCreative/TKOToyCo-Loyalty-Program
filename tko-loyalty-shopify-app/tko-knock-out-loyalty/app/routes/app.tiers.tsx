@@ -90,12 +90,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         {
           name: "Reigning Champion",
           description: "#1F2937",
-          minSpend: 100000,
+          minSpend: 9999999, // Effectively invite-only (unattainable value)
           benefits: [
             "All Heavyweight benefits",
             "Personal shopping assistant",
             "Exclusive events access",
             "Annual gift",
+            "Invite-only status",
           ],
         },
       ];
@@ -233,7 +234,14 @@ export default function TiersPage() {
       formData.append("action", "updateTier");
       formData.append("tierId", editingTier.id);
       formData.append("name", editingTier.name);
-      formData.append("minSpend", editingTier.spendThreshold.toString());
+
+      // If this is the Reigning Champion tier, always use the special high value
+      const minSpend =
+        editingTier.name === "Reigning Champion"
+          ? "9999999"
+          : editingTier.spendThreshold.toString();
+
+      formData.append("minSpend", minSpend);
       formData.append("color", editingTier.color);
       formData.append("benefits", JSON.stringify(editingTier.benefits));
 
@@ -248,9 +256,9 @@ export default function TiersPage() {
       {tier.name}
     </Text>,
     <Text key={`threshold-${tier.id}`} variant="bodyMd" as="span">
-      {tier.spendThreshold !== null
-        ? `$${tier.spendThreshold.toLocaleString()}`
-        : "Invite Only"}
+      {tier.name === "Reigning Champion" || tier.spendThreshold >= 9999999
+        ? "Invite Only"
+        : `$${tier.spendThreshold.toLocaleString()}`}
     </Text>,
     <div key={`benefits-${tier.id}`}>
       {tier.benefits.map((benefit, index) => (
@@ -349,16 +357,18 @@ export default function TiersPage() {
                           {tier.name}
                         </Text>
                         <Text variant="bodySm" as="p">
-                          {tier.spendThreshold !== null ? (
+                          {tier.name === "Reigning Champion" ||
+                          tier.spendThreshold >= 9999999 ? (
+                            "Invite Only"
+                          ) : (
                             <>
                               ${tier.spendThreshold.toLocaleString()}
                               {index < tiers.length - 1 &&
-                              tiers[index + 1].spendThreshold !== null
+                              tiers[index + 1].spendThreshold !== null &&
+                              tiers[index + 1].spendThreshold < 9999999
                                 ? ` - $${(Number(tiers[index + 1].spendThreshold) - 0.01).toLocaleString()}`
                                 : "+"}
                             </>
-                          ) : (
-                            "Invite Only"
                           )}
                         </Text>
                       </div>
@@ -414,19 +424,34 @@ export default function TiersPage() {
                 }
                 autoComplete="off"
               />
-              <TextField
-                label="Spend Threshold"
-                value={editingTier.spendThreshold.toString()}
-                onChange={(value) =>
-                  setEditingTier({
-                    ...editingTier,
-                    spendThreshold: parseInt(value) || 0,
-                  })
-                }
-                prefix="$"
-                type="number"
-                autoComplete="off"
-              />
+              {editingTier.name === "Reigning Champion" ? (
+                <BlockStack gap="200">
+                  <Text variant="bodyMd" as="p">
+                    This tier is invite-only and not based on spending
+                    threshold.
+                  </Text>
+                  <TextField
+                    label="Spend Threshold"
+                    value="Invite Only"
+                    disabled
+                    autoComplete="off"
+                  />
+                </BlockStack>
+              ) : (
+                <TextField
+                  label="Spend Threshold"
+                  value={editingTier.spendThreshold.toString()}
+                  onChange={(value) =>
+                    setEditingTier({
+                      ...editingTier,
+                      spendThreshold: parseInt(value) || 0,
+                    })
+                  }
+                  prefix="$"
+                  type="number"
+                  autoComplete="off"
+                />
+              )}
               <TextField
                 label="Color"
                 value={editingTier.color}

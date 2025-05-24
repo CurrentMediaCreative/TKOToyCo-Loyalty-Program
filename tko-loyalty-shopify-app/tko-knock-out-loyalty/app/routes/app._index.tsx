@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, Link } from "@remix-run/react";
@@ -12,96 +11,172 @@ import {
   Button,
   Icon,
   Badge,
-  Box,
   Grid,
-  LegacyCard,
   DataTable,
   EmptyState,
-  SkeletonBodyText,
-  SkeletonDisplayText,
-  Divider,
 } from "@shopify/polaris";
-import {
-  PlusIcon,
-  DeleteIcon,
-  EditIcon,
-  ViewIcon,
-} from "@shopify/polaris-icons";
+import { ViewIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
 
-  // In a real implementation, we would fetch data from the database
-  // For now, we'll use mock data
-  const stats = {
-    totalCustomers: 1245,
-    activeCustomers: 876,
-    totalPointsIssued: 124500,
-    totalPointsRedeemed: 78900,
-    redemptionRate: 63.4,
-    averagePointsPerCustomer: 100,
-    topTier: "Reigning Champion",
-    topTierCustomers: 12,
-  };
+  try {
+    // Fetch customers from Shopify
+    const customersResponse = await admin.graphql(
+      `#graphql
+        query GetCustomers($first: Int!) {
+          customers(first: $first, sortKey: TOTAL_SPENT, reverse: true) {
+            edges {
+              node {
+                id
+                firstName
+                lastName
+                email
+                totalSpent
+                ordersCount
+                tags
+                lastOrder {
+                  createdAt
+                }
+              }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }`,
+      {
+        variables: {
+          first: 50,
+        },
+      },
+    );
 
-  const recentRedemptions = [
-    {
-      id: "1",
-      customer: "John Smith",
-      reward: "10% Off Next Purchase",
-      points: 100,
-      date: "2025-05-18",
-    },
-    {
-      id: "2",
-      customer: "Sarah Johnson",
-      reward: "Free Shipping",
-      points: 150,
-      date: "2025-05-17",
-    },
-    {
-      id: "3",
-      customer: "Michael Brown",
-      reward: "$25 Store Credit",
-      points: 250,
-      date: "2025-05-16",
-    },
-  ];
+    const responseJson = await customersResponse.json();
+    const customers =
+      responseJson.data?.customers?.edges.map((edge: any) => edge.node) || [];
 
-  const topCustomers = [
-    {
-      id: "1",
-      name: "Emily Davis",
-      points: 2450,
-      tier: "Reigning Champion",
-      spent: "$105,230",
-    },
-    {
-      id: "2",
-      name: "Robert Wilson",
-      points: 1875,
-      tier: "Heavyweight",
-      spent: "$30,120",
-    },
-    {
-      id: "3",
-      name: "Jennifer Lee",
-      points: 1540,
-      tier: "Welterweight",
-      spent: "$12,890",
-    },
-  ];
+    // Calculate total spent across all customers
+    const totalSpent = customers.reduce(
+      (sum: number, customer: any) =>
+        sum + parseFloat(customer.totalSpent || "0"),
+      0,
+    );
 
-  return json({
-    stats,
-    recentRedemptions,
-    topCustomers,
-  });
+    // Calculate active customers (with orders in the last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const activeCustomers = customers.filter((customer: any) => {
+      if (!customer.lastOrder) return false;
+      const orderDate = new Date(customer.lastOrder.createdAt);
+      return orderDate >= thirtyDaysAgo;
+    }).length;
+
+    // Determine customer tiers based on spending
+    const customerTiers = customers.map((customer: any) => {
+      const spent = parseFloat(customer.totalSpent || "0");
+      let tier = "Featherweight";
+
+      // Check if customer has "Reigning Champion" tag (invite-only tier)
+      const hasReigningChampionTag =
+        customer.tags &&
+        customer.tags.some(
+          (tag: string) => tag.toLowerCase() === "reigning champion",
+        );
+
+      if (hasReigningChampionTag) {
+        tier = "Reigning Champion"; // Manually assigned tier overrides spending tier
+      } else if (spent >= 25000) {
+        tier = "Heavyweight";
+      } else if (spent >= 5000) {
+        tier = "Welterweight";
+      } else if (spent >= 1500) {
+        tier = "Lightweight";
+      }
+
+      return {
+        ...customer,
+        tier,
+      };
+    });
+
+    // Count customers in each tier
+    const tierCounts: Record<string, number> = {
+      Featherweight: 0,
+      Lightweight: 0,
+      Welterweight: 0,
+      Heavyweight: 0,
+      "Reigning Champion": 0,
+    };
+
+    customerTiers.forEach((customer: any) => {
+      const tier = customer.tier as string;
+      if (tierCounts[tier] !== undefined) {
+        tierCounts[tier]++;
+      }
+    });
+
+    // No redemptions in this system
+    const recentRedemptions: any[] = [];
+
+    // Get top customers
+    const topCustomers = customerTiers.slice(0, 3).map((customer: any) => ({
+      id: customer.id.replace("gid://shopify/Customer/", ""),
+      name:
+        `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
+        "Unknown",
+      tier: customer.tier,
+      spent: `$${parseFloat(customer.totalSpent).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      orders: customer.ordersCount || 0,
+    }));
+
+    // Calculate stats
+    const stats = {
+      totalCustomers: customers.length,
+      activeCustomers,
+      totalSpent: `$${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      topTier: "Reigning Champion",
+      topTierCustomers: tierCounts["Reigning Champion"],
+    };
+
+    return json({
+      stats,
+      recentRedemptions,
+      topCustomers,
+    });
+  } catch (error) {
+    console.error("Error fetching dashboard data:", error);
+
+    // Return empty data in case of error
+    return json({
+      stats: {
+        totalCustomers: 0,
+        activeCustomers: 0,
+        totalSpent: "$0.00",
+        topTier: "Reigning Champion",
+        topTierCustomers: 0,
+      },
+      recentRedemptions: [],
+      topCustomers: [],
+    });
+  }
 };
 
 export default function Index() {
-  const { stats, recentRedemptions, topCustomers } = useLoaderData<typeof loader>();
+  const { stats, recentRedemptions, topCustomers } =
+    useLoaderData<typeof loader>();
+
+  // Recreate tier counts for the UI
+  const tierCounts = {
+    Featherweight: 0,
+    Lightweight: 0,
+    Welterweight: 0,
+    Heavyweight: 0,
+    "Reigning Champion": stats.topTierCustomers || 0,
+  };
 
   const getTierColor = (tier: string) => {
     switch (tier) {
@@ -142,12 +217,9 @@ export default function Index() {
     </Button>,
   ]);
 
-  const customerRows = topCustomers.map((customer) => [
+  const customerRows = topCustomers.map((customer: any) => [
     <Text key={`name-${customer.id}`} variant="bodyMd" as="span">
       {customer.name}
-    </Text>,
-    <Text key={`points-${customer.id}`} variant="bodyMd" as="span">
-      {customer.points}
     </Text>,
     <Badge
       key={`tier-${customer.id}`}
@@ -157,6 +229,9 @@ export default function Index() {
     </Badge>,
     <Text key={`spent-${customer.id}`} variant="bodyMd" as="span">
       {customer.spent}
+    </Text>,
+    <Text key={`orders-${customer.id}`} variant="bodyMd" as="span">
+      {customer.orders}
     </Text>,
     <Button
       key={`view-${customer.id}`}
@@ -178,14 +253,11 @@ export default function Index() {
                   <Text as="h2" variant="headingLg">
                     TKO Loyalty Program Dashboard
                   </Text>
-                  <Button
-                    variant="primary"
-                  >
-                    Send Loyalty Update
-                  </Button>
+                  <Button variant="primary">Send Loyalty Update</Button>
                 </InlineStack>
                 <Text as="p" variant="bodyMd">
-                  Welcome to your loyalty program dashboard. Here you can manage your customers, tiers, rewards, and view key metrics.
+                  Welcome to your loyalty program dashboard. Here you can manage
+                  your customers, tiers, rewards, and view key metrics.
                 </Text>
               </BlockStack>
             </Card>
@@ -212,13 +284,13 @@ export default function Index() {
                 <Card>
                   <BlockStack gap="200">
                     <Text variant="headingSm" as="h3">
-                      Total Points Issued
+                      Total Spent
                     </Text>
                     <Text variant="headingXl" as="p">
-                      {stats.totalPointsIssued.toLocaleString()}
+                      {stats.totalSpent}
                     </Text>
                     <Text variant="bodySm" as="p">
-                      {stats.averagePointsPerCustomer} avg. per customer
+                      Across all customers
                     </Text>
                   </BlockStack>
                 </Card>
@@ -227,13 +299,13 @@ export default function Index() {
                 <Card>
                   <BlockStack gap="200">
                     <Text variant="headingSm" as="h3">
-                      Points Redeemed
+                      Heavyweight Tier
                     </Text>
                     <Text variant="headingXl" as="p">
-                      {stats.totalPointsRedeemed.toLocaleString()}
+                      {tierCounts?.Heavyweight || 0}
                     </Text>
                     <Text variant="bodySm" as="p">
-                      {stats.redemptionRate}% redemption rate
+                      $25,000+ spent
                     </Text>
                   </BlockStack>
                 </Card>
@@ -242,13 +314,13 @@ export default function Index() {
                 <Card>
                   <BlockStack gap="200">
                     <Text variant="headingSm" as="h3">
-                      Top Tier Customers
+                      Reigning Champions
                     </Text>
                     <Text variant="headingXl" as="p">
                       {stats.topTierCustomers}
                     </Text>
                     <Text variant="bodySm" as="p">
-                      {stats.topTier} tier members
+                      Invite-only tier
                     </Text>
                   </BlockStack>
                 </Card>
@@ -271,8 +343,20 @@ export default function Index() {
                     </InlineStack>
                     {redemptionRows.length > 0 ? (
                       <DataTable
-                        columnContentTypes={["text", "text", "text", "text", "text"]}
-                        headings={["Customer", "Reward", "Points", "Date", "Actions"]}
+                        columnContentTypes={[
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                        ]}
+                        headings={[
+                          "Customer",
+                          "Reward",
+                          "Points",
+                          "Date",
+                          "Actions",
+                        ]}
                         rows={redemptionRows}
                       />
                     ) : (
@@ -280,9 +364,7 @@ export default function Index() {
                         heading="No recent redemptions"
                         image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                       >
-                        <p>
-                          No customers have redeemed rewards recently.
-                        </p>
+                        <p>No customers have redeemed rewards recently.</p>
                       </EmptyState>
                     )}
                   </BlockStack>
@@ -301,8 +383,20 @@ export default function Index() {
                     </InlineStack>
                     {customerRows.length > 0 ? (
                       <DataTable
-                        columnContentTypes={["text", "text", "text", "text", "text"]}
-                        headings={["Customer", "Points", "Tier", "Total Spent", "Actions"]}
+                        columnContentTypes={[
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                        ]}
+                        headings={[
+                          "Customer",
+                          "Tier",
+                          "Total Spent",
+                          "Orders",
+                          "Actions",
+                        ]}
                         rows={customerRows}
                       />
                     ) : (
@@ -330,29 +424,21 @@ export default function Index() {
                 <Grid>
                   <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                     <Link to="/app/customers">
-                      <Button fullWidth>
-                        Manage Customers
-                      </Button>
+                      <Button fullWidth>Manage Customers</Button>
                     </Link>
                   </Grid.Cell>
                   <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                     <Link to="/app/tiers">
-                      <Button fullWidth>
-                        Configure Tiers
-                      </Button>
+                      <Button fullWidth>Configure Tiers</Button>
                     </Link>
                   </Grid.Cell>
                   <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                     <Link to="/app/rewards">
-                      <Button fullWidth>
-                        Manage Rewards
-                      </Button>
+                      <Button fullWidth>Manage Rewards</Button>
                     </Link>
                   </Grid.Cell>
                   <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
-                    <Button fullWidth>
-                      View Reports
-                    </Button>
+                    <Button fullWidth>View Reports</Button>
                   </Grid.Cell>
                 </Grid>
               </BlockStack>
