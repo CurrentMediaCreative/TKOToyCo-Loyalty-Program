@@ -27,7 +27,6 @@ export default function App() {
         <Link to="/app/customers">Customers</Link>
         <Link to="/app/tiers">Loyalty Tiers</Link>
         <Link to="/app/rewards">Rewards</Link>
-        <Link to="/app/additional">Additional page</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>
