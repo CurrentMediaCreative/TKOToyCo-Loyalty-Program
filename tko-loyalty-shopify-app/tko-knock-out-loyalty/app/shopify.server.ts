@@ -9,12 +9,20 @@ import prisma from "./db.server";
 
 // Ensure we have a valid URL with protocol for Shopify API
 const getAppUrl = () => {
-  const url = process.env.SHOPIFY_APP_URL || "";
-  // If no protocol, add https://
-  if (!url.includes("://")) {
-    return `https://${url}`;
+  try {
+    const url = process.env.SHOPIFY_APP_URL || "";
+    // If no protocol, add https://
+    if (!url.includes("://")) {
+      return `https://${url}`;
+    }
+    // Validate URL by attempting to construct a URL object
+    new URL(url);
+    return url; // Return the full URL with protocol
+  } catch (error) {
+    console.error("Invalid SHOPIFY_APP_URL:", error);
+    // Fallback to a safe default for local development
+    return "http://localhost:3000";
   }
-  return url; // Return the full URL with protocol
 };
 
 const shopify = shopifyApp({
@@ -27,9 +35,18 @@ const shopify = shopifyApp({
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.ShopifyAdmin,
   adminApiAccessToken: process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN,
+  isEmbeddedApp: true, // Ensure embedded app is set to true
+  cookieOptions: {
+    // Set SameSite attribute to None for cross-site embedding
+    sameSite: "none",
+    secure: true, // Required when SameSite is None
+    partitioned: true, // Enable partitioned cookies for better third-party context handling
+  },
   future: {
     unstable_newEmbeddedAuthStrategy: true,
     removeRest: true,
+    v3_authenticatePublic: true, // Enable v3 authentication for public requests
+    v3_optInToPartialSessions: true, // Opt into partial sessions for better cookie handling
   },
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }

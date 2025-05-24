@@ -30,3 +30,40 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+model Tier {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  minSpend    Float
+  maxSpend    Float?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  benefits    TierBenefit[]
+  customers   Customer[]
+}
+
+model TierBenefit {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  tierId      String
+  tier        Tier     @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Customer {
+  id             String   @id
+  shopifyId      BigInt   @unique
+  email          String?
+  firstName      String?
+  lastName       String?
+  totalSpend     Float    @default(0)
+  tierId         String?
+  tier           Tier?    @relation(fields: [tierId], references: [id])
+  metafieldId    String?  @unique
+  lastOrderDate  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
