@@ -26,15 +26,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const customersResponse = await admin.graphql(
       `#graphql
         query GetCustomers($first: Int!) {
-          customers(first: $first, sortKey: TOTAL_SPENT, reverse: true) {
+          customers(first: $first, sortKey: UPDATED_AT, reverse: true) {
             edges {
               node {
                 id
                 firstName
                 lastName
                 email
-                totalSpent
-                ordersCount
+                amountSpent {
+                  amount
+                }
+                numberOfOrders
                 tags
                 lastOrder {
                   createdAt
@@ -61,7 +63,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Calculate total spent across all customers
     const totalSpent = customers.reduce(
       (sum: number, customer: any) =>
-        sum + parseFloat(customer.totalSpent || "0"),
+        sum + parseFloat(customer.amountSpent?.amount || "0"),
       0,
     );
 
@@ -77,7 +79,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     // Determine customer tiers based on spending
     const customerTiers = customers.map((customer: any) => {
-      const spent = parseFloat(customer.totalSpent || "0");
+      const spent = parseFloat(customer.amountSpent?.amount || "0");
       let tier = "Featherweight";
 
       // Check if customer has "Reigning Champion" tag (invite-only tier)
@@ -129,8 +131,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
         "Unknown",
       tier: customer.tier,
-      spent: `$${parseFloat(customer.totalSpent).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      orders: customer.ordersCount || 0,
+      spent: `$${parseFloat(customer.amountSpent?.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      orders: customer.numberOfOrders || 0,
     }));
 
     // Calculate stats

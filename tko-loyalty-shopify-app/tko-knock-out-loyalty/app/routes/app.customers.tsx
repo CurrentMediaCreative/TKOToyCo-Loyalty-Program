@@ -43,8 +43,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               lastName
               email
               phone
-              ordersCount
-              totalSpent
+              numberOfOrders
+              amountSpent {
+                amount
+              }
               tags
               createdAt
               defaultAddress {
@@ -60,13 +62,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       variables: {
         first: 50,
       },
-    }
+    },
   );
 
   const responseJson = await response.json();
-  const customers = responseJson.data?.customers?.edges.map(
-    (edge: any) => edge.node
-  ) || [];
+  const customers =
+    responseJson.data?.customers?.edges.map((edge: any) => edge.node) || [];
 
   return json({
     customers,
@@ -84,11 +85,8 @@ export default function CustomersPage() {
     plural: "customers",
   };
 
-  const {
-    selectedResources,
-    allResourcesSelected,
-    handleSelectionChange,
-  } = useIndexResourceState(customers);
+  const { selectedResources, allResourcesSelected, handleSelectionChange } =
+    useIndexResourceState(customers);
 
   const tabs = [
     {
@@ -144,8 +142,8 @@ export default function CustomersPage() {
   });
 
   // Function to determine customer tier based on total spent
-  const getCustomerTier = (totalSpent: string) => {
-    const spent = parseFloat(totalSpent);
+  const getCustomerTier = (amountSpent: any) => {
+    const spent = parseFloat(amountSpent?.amount || "0");
     if (spent >= 100000) return "Reigning Champion"; // Added top tier with high spend threshold
     if (spent >= 25000) return "Heavyweight";
     if (spent >= 5000) return "Welterweight";
@@ -171,15 +169,15 @@ export default function CustomersPage() {
     }
   };
 
-  const rowMarkup = filteredCustomers.map(
-    (customer: any, index: number) => {
-      const tier = getCustomerTier(customer.totalSpent);
-      
+  const rowMarkup = filteredCustomers
+    .map((customer: any, index: number) => {
+      const tier = getCustomerTier(customer.amountSpent);
+
       // Filter by tier if a tab other than "All" is selected
       if (selectedTab > 0 && tier !== tabs[selectedTab].content) {
         return null;
       }
-      
+
       const id = customer.id.replace("gid://shopify/Customer/", "");
       const name = `${customer.firstName} ${customer.lastName}`;
       const location = customer.defaultAddress
@@ -203,14 +201,14 @@ export default function CustomersPage() {
             <Badge tone={getTierColor(tier) as any}>{tier}</Badge>
           </IndexTable.Cell>
           <IndexTable.Cell>
-            ${parseFloat(customer.totalSpent).toFixed(2)}
+            ${parseFloat(customer.amountSpent?.amount || "0").toFixed(2)}
           </IndexTable.Cell>
-          <IndexTable.Cell>{customer.ordersCount}</IndexTable.Cell>
+          <IndexTable.Cell>{customer.numberOfOrders}</IndexTable.Cell>
           <IndexTable.Cell>{location}</IndexTable.Cell>
         </IndexTable.Row>
       );
-    }
-  ).filter(Boolean); // Remove null rows (filtered out by tier)
+    })
+    .filter(Boolean); // Remove null rows (filtered out by tier)
 
   const emptyStateMarkup = (
     <EmptyState
@@ -218,7 +216,8 @@ export default function CustomersPage() {
       image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
     >
       <p>
-        No customers match the current search criteria or there are no customers in this tier.
+        No customers match the current search criteria or there are no customers
+        in this tier.
       </p>
     </EmptyState>
   );
@@ -229,7 +228,11 @@ export default function CustomersPage() {
       <Layout>
         <Layout.Section>
           <Card>
-            <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange} />
+            <Tabs
+              tabs={tabs}
+              selected={selectedTab}
+              onSelect={handleTabChange}
+            />
             <div style={{ padding: "16px", display: "flex" }}>
               <div style={{ flex: 1 }}>
                 <TextField
