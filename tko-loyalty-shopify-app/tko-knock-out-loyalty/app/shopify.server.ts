@@ -1,9 +1,5 @@
 import "@shopify/shopify-app-remix/adapters/node";
-import {
-  ApiVersion,
-  AppDistribution,
-  shopifyApp,
-} from "@shopify/shopify-app-remix/server";
+import { ApiVersion, shopifyApp } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 
@@ -42,8 +38,8 @@ const shopify = shopifyApp({
   appUrl: getAppUrl(),
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
-  distribution: AppDistribution.ShopifyAdmin,
-  adminApiAccessToken: process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN,
+  // For custom distribution apps, omit the distribution parameter
+  // distribution: AppDistribution.ShopifyAdmin, // Only used for admin-created custom apps
   isEmbeddedApp: true, // Ensure embedded app is set to true
   cookieOptions: {
     // Set SameSite attribute to None for cross-site embedding
