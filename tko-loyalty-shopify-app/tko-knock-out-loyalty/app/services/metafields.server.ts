@@ -1,6 +1,6 @@
 // Import the admin type from a local type definition
 import type { Admin } from "../types";
-import { getTierById } from "./tier.server";
+import { getTierById, getTiers } from "./tier.server";
 
 // Namespace for our loyalty program metafields
 export const METAFIELD_NAMESPACE = "tko_loyalty";
@@ -208,52 +208,42 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
     };
 
     // Function to determine customer tier based on total spent
-    function getCustomerTierInfo(amountSpent: any) {
+    async function getCustomerTierInfo(admin: Admin, amountSpent: any) {
       const spent = parseFloat(amountSpent?.amount || "0");
 
-      if (spent >= 100000) {
-        return {
-          name: "Reigning Champion",
-          level: 5,
-          benefits: [
-            "Free Shipping",
-            "Exclusive Products",
-            "Early Access",
-            "VIP Events",
-            "Personal Shopper",
-          ],
-        };
+      // Fetch all tiers from the database
+      const dbTiers = await getTiers();
+
+      // Sort tiers by minSpend in ascending order
+      const sortedTiers = [...dbTiers].sort((a, b) => a.minSpend - b.minSpend);
+
+      // Find the appropriate tier based on the customer's spend
+      let matchedTier = sortedTiers[0]; // Default to the lowest tier
+
+      for (let i = sortedTiers.length - 1; i >= 0; i--) {
+        const tier = sortedTiers[i];
+        // Skip the Reigning Champion tier (which is invite-only)
+        if (tier.name === "Reigning Champion" || tier.minSpend >= 9999999) {
+          continue;
+        }
+
+        if (spent >= tier.minSpend) {
+          matchedTier = tier;
+          break;
+        }
       }
-      if (spent >= 25000) {
-        return {
-          name: "Heavyweight",
-          level: 4,
-          benefits: [
-            "Free Shipping",
-            "Exclusive Products",
-            "Early Access",
-            "VIP Events",
-          ],
-        };
-      }
-      if (spent >= 5000) {
-        return {
-          name: "Welterweight",
-          level: 3,
-          benefits: ["Free Shipping", "Exclusive Products", "Early Access"],
-        };
-      }
-      if (spent >= 1500) {
-        return {
-          name: "Lightweight",
-          level: 2,
-          benefits: ["Free Shipping", "Exclusive Products"],
-        };
-      }
+
+      // Get the tier level based on its position in the sorted array
+      const tierLevel =
+        sortedTiers.findIndex((t) => t.id === matchedTier.id) + 1;
+
+      // Extract benefits from the tier
+      const benefits = matchedTier.benefits.map((benefit: any) => benefit.name);
+
       return {
-        name: "Featherweight",
-        level: 1,
-        benefits: ["Free Shipping"],
+        name: matchedTier.name,
+        level: tierLevel,
+        benefits: benefits,
       };
     }
 
@@ -266,7 +256,10 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
       const batchPromises = batch.map(async (customer: any) => {
         try {
           const customerId = customer.id;
-          const tierInfo = getCustomerTierInfo(customer.amountSpent);
+          const tierInfo = await getCustomerTierInfo(
+            admin,
+            customer.amountSpent,
+          );
           const totalSpend = parseFloat(customer.amountSpent?.amount || "0");
 
           // Create metafields using the Shopify Admin API
