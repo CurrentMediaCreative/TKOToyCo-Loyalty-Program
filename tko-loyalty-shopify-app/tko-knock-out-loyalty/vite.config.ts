@@ -6,7 +6,9 @@ import tsconfigPaths from "vite-tsconfig-paths";
 installGlobals({ nativeFetch: true });
 
 // Disable HMR in production to avoid DNS lookup issues
-const isLocalhost = !process.env.SHOPIFY_APP_URL || process.env.SHOPIFY_APP_URL.includes('localhost');
+const isLocalhost =
+  !process.env.SHOPIFY_APP_URL ||
+  process.env.SHOPIFY_APP_URL.includes("localhost");
 
 // Only enable HMR for local development
 let hmrConfig: any = false;
@@ -25,7 +27,7 @@ export default defineConfig({
     cors: {
       preflightContinue: true,
     },
-    port: Number(process.env.PORT || 3000),
+    port: Number(process.env.PORT || 56552), // Dynamic port for Render compatibility, fallback to 56552 for local dev
     hmr: hmrConfig,
     fs: {
       // See https://vitejs.dev/config/server-options.html#server-fs-allow for more information
