@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
@@ -133,6 +133,8 @@ export default function CustomersPage() {
   const [sortDirection, setSortDirection] = useState<
     "ascending" | "descending"
   >("ascending");
+  const [currentPage, setCurrentPage] = useState(1);
+  const customersPerPage = 50;
 
   const resourceName = {
     singular: "customer",
@@ -268,61 +270,81 @@ export default function CustomersPage() {
     });
 
   // Sort the filtered customers
-  const sortedCustomers = [...filteredCustomers].sort((a, b) => {
-    let valueA, valueB;
+  const sortedCustomers = useMemo(
+    () =>
+      [...filteredCustomers].sort((a, b) => {
+        let valueA, valueB;
 
-    switch (sortField) {
-      case "name":
-        valueA = a.name || "";
-        valueB = b.name || "";
-        break;
-      case "email":
-        valueA = a.email || "";
-        valueB = b.email || "";
-        break;
-      case "tier":
-        // Custom tier sorting by level instead of alphabetically
-        const tierOrder: Record<string, number> = {
-          Featherweight: 1,
-          Lightweight: 2,
-          Welterweight: 3,
-          Heavyweight: 4,
-          "Reigning Champion": 5,
-        };
-        valueA = tierOrder[a.tier as string] || 0;
-        valueB = tierOrder[b.tier as string] || 0;
-        break;
-      case "spent":
-        valueA = a.spentAmount;
-        valueB = b.spentAmount;
-        break;
-      case "orders":
-        valueA = a.numberOfOrders || 0;
-        valueB = b.numberOfOrders || 0;
-        break;
-      case "location":
-        valueA = a.location || "";
-        valueB = b.location || "";
-        break;
-      default:
-        valueA = a.name || "";
-        valueB = b.name || "";
-    }
+        switch (sortField) {
+          case "name":
+            valueA = a.name || "";
+            valueB = b.name || "";
+            break;
+          case "email":
+            valueA = a.email || "";
+            valueB = b.email || "";
+            break;
+          case "tier":
+            // Custom tier sorting by level instead of alphabetically
+            const tierOrder: Record<string, number> = {
+              Featherweight: 1,
+              Lightweight: 2,
+              Welterweight: 3,
+              Heavyweight: 4,
+              "Reigning Champion": 5,
+            };
+            valueA = tierOrder[a.tier as string] || 0;
+            valueB = tierOrder[b.tier as string] || 0;
+            break;
+          case "spent":
+            valueA = a.spentAmount;
+            valueB = b.spentAmount;
+            break;
+          case "orders":
+            valueA = a.numberOfOrders || 0;
+            valueB = b.numberOfOrders || 0;
+            break;
+          case "location":
+            valueA = a.location || "";
+            valueB = b.location || "";
+            break;
+          default:
+            valueA = a.name || "";
+            valueB = b.name || "";
+        }
 
-    // For string comparisons
-    if (typeof valueA === "string" && typeof valueB === "string") {
-      return sortDirection === "ascending"
-        ? valueA.localeCompare(valueB)
-        : valueB.localeCompare(valueA);
-    }
+        // For string comparisons
+        if (typeof valueA === "string" && typeof valueB === "string") {
+          return sortDirection === "ascending"
+            ? valueA.localeCompare(valueB)
+            : valueB.localeCompare(valueA);
+        }
 
-    // For numeric comparisons
-    return sortDirection === "ascending"
-      ? (valueA as number) - (valueB as number)
-      : (valueB as number) - (valueA as number);
-  });
+        // For numeric comparisons
+        return sortDirection === "ascending"
+          ? (valueA as number) - (valueB as number)
+          : (valueB as number) - (valueA as number);
+      }),
+    [filteredCustomers, sortField, sortDirection],
+  );
 
-  const rowMarkup = sortedCustomers.map((customer: any, index: number) => {
+  // Get current page customers
+  const indexOfLastCustomer = currentPage * customersPerPage;
+  const indexOfFirstCustomer = indexOfLastCustomer - customersPerPage;
+  const currentCustomers = sortedCustomers.slice(
+    indexOfFirstCustomer,
+    indexOfLastCustomer,
+  );
+
+  // Calculate total pages
+  const totalPages = Math.ceil(sortedCustomers.length / customersPerPage);
+
+  // Change page
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  const rowMarkup = currentCustomers.map((customer: any, index: number) => {
     const id = customer.id.replace("gid://shopify/Customer/", "");
 
     return (
@@ -396,10 +418,30 @@ export default function CustomersPage() {
               </div>
             </div>
 
-            <InlineStack align="center" gap="400">
+            <InlineStack align="space-between" gap="400">
               <Text as="p" variant="bodyMd">
-                {customers.length} total customers, {rowMarkup.length} shown
+                {customers.length} total customers, {sortedCustomers.length}{" "}
+                filtered, showing page {currentPage} of {totalPages}
               </Text>
+              <div>
+                <Button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  variant="tertiary"
+                >
+                  Previous
+                </Button>
+                <span style={{ margin: "0 10px" }}>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  variant="tertiary"
+                >
+                  Next
+                </Button>
+              </div>
             </InlineStack>
 
             <IndexTable
