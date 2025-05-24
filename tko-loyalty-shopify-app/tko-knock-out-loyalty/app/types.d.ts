@@ -1,5 +1,11 @@
 // Type declarations for modules without type definitions
 
+// Define Admin type for use in our services
+export type Admin = {
+  graphql: (query: string, options?: { variables?: any }) => Promise<Response>;
+  rest: any;
+};
+
 declare module "@shopify/shopify-app-remix/server" {
   export const ApiVersion: {
     January25: string;

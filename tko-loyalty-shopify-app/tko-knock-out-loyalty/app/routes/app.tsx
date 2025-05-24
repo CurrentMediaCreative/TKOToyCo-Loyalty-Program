@@ -27,6 +27,7 @@ export default function App() {
         <Link to="/app/customers">Customers</Link>
         <Link to="/app/tiers">Loyalty Tiers</Link>
         <Link to="/app/rewards">Rewards</Link>
+        <Link to="/app/metafields">Sync Metafields</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>
