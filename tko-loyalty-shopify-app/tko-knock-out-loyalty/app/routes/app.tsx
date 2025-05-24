@@ -1,8 +1,6 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
-import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
-import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 
 import { authenticate } from "../shopify.server";
@@ -20,14 +18,21 @@ export default function App() {
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
-      <NavMenu>
+      <nav
+        style={{
+          display: "flex",
+          gap: "10px",
+          padding: "10px",
+          background: "#f5f5f5",
+        }}
+      >
         <Link to="/app" rel="home">
           Home
         </Link>
         <Link to="/app/customers">Customers</Link>
         <Link to="/app/tiers">Loyalty Tiers</Link>
         <Link to="/app/rewards">Rewards</Link>
-      </NavMenu>
+      </nav>
       <Outlet />
     </AppProvider>
   );
@@ -40,4 +45,10 @@ export function ErrorBoundary() {
 
 export const headers: HeadersFunction = (headersArgs) => {
   return boundary.headers(headersArgs);
+};
+
+// Define boundary object locally since it's not exported from @shopify/shopify-app-remix/server
+export const boundary = {
+  error: (error: any) => error,
+  headers: (args: any) => new Headers(),
 };
