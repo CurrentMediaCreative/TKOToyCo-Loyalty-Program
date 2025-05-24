@@ -121,9 +121,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     });
 
-    // No redemptions in this system
-    const recentRedemptions: any[] = [];
-
     // Get top customers
     const topCustomers = customerTiers.slice(0, 3).map((customer: any) => ({
       id: customer.id.replace("gid://shopify/Customer/", ""),
@@ -146,7 +143,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     return json({
       stats,
-      recentRedemptions,
       topCustomers,
     });
   } catch (error) {
@@ -161,15 +157,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         topTier: "Reigning Champion",
         topTierCustomers: 0,
       },
-      recentRedemptions: [],
       topCustomers: [],
     });
   }
 };
 
 export default function Index() {
-  const { stats, recentRedemptions, topCustomers } =
-    useLoaderData<typeof loader>();
+  const { stats, topCustomers } = useLoaderData<typeof loader>();
 
   // Recreate tier counts for the UI
   const tierCounts = {
@@ -196,28 +190,6 @@ export default function Index() {
         return "new";
     }
   };
-
-  const redemptionRows = recentRedemptions.map((redemption) => [
-    <Text key={`customer-${redemption.id}`} variant="bodyMd" as="span">
-      {redemption.customer}
-    </Text>,
-    <Text key={`reward-${redemption.id}`} variant="bodyMd" as="span">
-      {redemption.reward}
-    </Text>,
-    <Text key={`points-${redemption.id}`} variant="bodyMd" as="span">
-      {redemption.points}
-    </Text>,
-    <Text key={`date-${redemption.id}`} variant="bodyMd" as="span">
-      {new Date(redemption.date).toLocaleDateString()}
-    </Text>,
-    <Button
-      key={`view-${redemption.id}`}
-      variant="tertiary"
-      icon={<Icon source={ViewIcon} />}
-    >
-      View
-    </Button>,
-  ]);
 
   const customerRows = topCustomers.map((customer: any) => [
     <Text key={`name-${customer.id}`} variant="bodyMd" as="span">
@@ -337,46 +309,6 @@ export default function Index() {
                   <BlockStack gap="400">
                     <InlineStack align="space-between">
                       <Text as="h3" variant="headingMd">
-                        Recent Redemptions
-                      </Text>
-                      <Link to="/app/rewards">
-                        <Button variant="plain">View all rewards</Button>
-                      </Link>
-                    </InlineStack>
-                    {redemptionRows.length > 0 ? (
-                      <DataTable
-                        columnContentTypes={[
-                          "text",
-                          "text",
-                          "text",
-                          "text",
-                          "text",
-                        ]}
-                        headings={[
-                          "Customer",
-                          "Reward",
-                          "Points",
-                          "Date",
-                          "Actions",
-                        ]}
-                        rows={redemptionRows}
-                      />
-                    ) : (
-                      <EmptyState
-                        heading="No recent redemptions"
-                        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                      >
-                        <p>No customers have redeemed rewards recently.</p>
-                      </EmptyState>
-                    )}
-                  </BlockStack>
-                </Card>
-              </Grid.Cell>
-              <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
-                <Card>
-                  <BlockStack gap="400">
-                    <InlineStack align="space-between">
-                      <Text as="h3" variant="headingMd">
                         Top Customers
                       </Text>
                       <Link to="/app/customers">
@@ -432,11 +364,6 @@ export default function Index() {
                   <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                     <Link to="/app/tiers">
                       <Button fullWidth>Configure Tiers</Button>
-                    </Link>
-                  </Grid.Cell>
-                  <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
-                    <Link to="/app/rewards">
-                      <Button fullWidth>Manage Rewards</Button>
                     </Link>
                   </Grid.Cell>
                   <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>

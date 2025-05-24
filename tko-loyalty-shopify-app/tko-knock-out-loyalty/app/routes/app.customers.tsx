@@ -1,28 +1,18 @@
-import { useEffect, useState } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { useState } from "react";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useNavigate } from "@remix-run/react";
+import { useLoaderData } from "@remix-run/react";
 import {
   Page,
   Layout,
   Card,
-  ResourceList,
-  ResourceItem,
   Text,
   TextField,
-  Filters,
   Button,
   EmptyState,
-  Pagination,
-  LegacyStack,
   Badge,
-  Avatar,
   IndexTable,
   useIndexResourceState,
-  IndexFilters,
-  useSetIndexFiltersMode,
-  ChoiceList,
-  RangeSlider,
   Tabs,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -76,7 +66,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function CustomersPage() {
   const { customers } = useLoaderData<typeof loader>();
-  const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState("");
   const [selectedTab, setSelectedTab] = useState(0);
 
