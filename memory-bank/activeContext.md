@@ -173,55 +173,70 @@ We are currently implementing the Frontend UI for the TKO Toy Co Loyalty Program
 
 ## Next Steps
 
-1. **Integration Approach Determined: Standalone Application**:
+1. **Integration Approach Updated: Shopify App**:
 
-   - We have decided to implement the TKO Toy Co Loyalty Program as a standalone application
-   - This approach provides full control over the application architecture and user experience
-   - Allows for integration with both Shopify and BinderPOS without platform constraints
-   - Enables future extensibility and independent development
-   - Detailed documentation available in `memory-bank/integration/integration-approach.md`
+   - We have decided to transition to implementing the TKO Toy Co Loyalty Program as a fully integrated Shopify app
+   - This approach provides seamless integration with the Shopify ecosystem
+   - Leverages Shopify's built-in infrastructure for authentication, data storage, and UI
+   - Simplifies deployment and maintenance
+   - Detailed documentation available in `tko-loyalty-shopify-app/shopify-app-transition-plan.md`
 
-2. **Desktop Application for POS Integration - Testing Phase**:
+2. **Shopify App Development - Current Phase**:
 
-   - Created Electron-based desktop application that runs locally on store computers
-   - Implemented popup functionality that displays customer loyalty information
-   - Built tier visualization with progress indicators and benefit reminders
-   - Developed "close to next tier" notifications with spending recommendations
-   - Created service layer with proper abstractions for eventual API integration
-   - Implemented with mock data while waiting for API access
-   - Successfully installed dependencies and resolved TypeScript errors
-   - Verified proper tray icon implementation
-   - Currently testing the application functionality
-   - Detailed implementation documentation available in `memory-bank/desktop-implementation-progress.md`
+   - Created Shopify app scaffold using Shopify CLI
+   - Implemented basic UI components for the admin dashboard
+   - Set up loyalty tier management screens
+   - Configured customer management views
+   - Implemented rewards management interface
+   - Updated tier naming convention to use boxing-themed tiers (Featherweight, Lightweight, Welterweight, Heavyweight, Reigning Champion)
+   - Currently working on completing the core features of the app
+   - Resolved deployment issues with Render.com:
+     - Updated database configuration to use PostgreSQL instead of SQLite
+     - Fixed URL configuration issues in vite.config.ts
+     - Updated environment variables for proper deployment
+     - Configured proper redirect URLs in shopify.app.toml
+   - Fixed Shopify app integration issues:
+     - Changed app distribution from AppDistribution.AppStore to AppDistribution.ShopifyAdmin
+     - Updated authentication flow to use authenticate.admin instead of login
+     - Modified routes to handle admin app authentication properly
+     - Added adminApiAccessToken parameter to shopifyApp configuration
+     - Added SHOPIFY_ADMIN_API_ACCESS_TOKEN environment variable on Render.com
 
-3. **Connect Frontend and Desktop App to Backend API**:
+3. **Complete Core Shopify App Features**:
 
-   - Replace mock data with actual API calls
-   - Implement API service layer in frontend and desktop app
-   - Add loading states and error handling for API requests
-   - Ensure proper authentication token management
-   - Create data fetching and caching mechanisms
-   - Implement offline support with local data storage
-   - Set up data synchronization between backend and desktop app
+   - Implement points calculation logic based on order value
+   - Create database models for storing customer points
+   - Set up point history tracking
+   - Implement point expiration rules
+   - Finalize tier benefits implementation
+   - Create automatic tier assignment based on customer spending
+   - Implement manual tier override capabilities for admin
+   - Complete rewards redemption flow
+   - Build customer-facing loyalty dashboard
 
-4. **Implement Integration with External Systems**:
+4. **Implement Shopify Integration Points**:
 
-   - Create Shopify integration module with OAuth authentication
-   - Develop BinderPOS integration module with API key authentication
-   - Implement data synchronization service
-   - Set up webhooks for Shopify and scheduled synchronization for BinderPOS
+   - Set up webhooks to capture new orders
+   - Implement point calculation on order completion
+   - Create transaction records for point history
+   - Integrate with Shopify customer data
+   - Implement customer tagging for tier identification
+   - Create discount code generation for rewards
 
-5. **Develop Data Aggregation Logic**:
+5. **Testing and Debugging**:
 
-   - Create customer spend calculation service
-   - Implement tier assignment rules
-   - Set up data consistency checks
-   - Create audit logging for data changes
+   - Comprehensive testing with sample data
+   - Verify points calculation accuracy
+   - Test tier progression logic
+   - Validate reward redemption flow
+   - Performance testing under load
 
-6. **Testing After Implementation**:
-   - Develop appropriate tests based on the actual implementation
-   - Focus on testing the critical paths and integration points
-   - Ensure the application works end-to-end with real data
+6. **Deployment and Publication**:
+   - Prepare app for Shopify App Store submission
+   - Create app listing materials (screenshots, descriptions)
+   - Set up production environment
+   - Configure monitoring and error tracking
+   - Prepare user documentation
 
 ## Important Patterns and Preferences
 

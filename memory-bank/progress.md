@@ -249,35 +249,63 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 
 ## Next Steps
 
-1. Integration approach determined - Standalone Application:
+1. Integration approach updated - Shopify App:
 
-   - ✓ Evaluated integration options (Standalone, Shopify App, BinderPOS Integration)
-   - ✓ Selected Standalone Application approach for maximum flexibility and control
-   - ✓ Documented the approach and architectural implications in `memory-bank/integration/integration-approach.md`
+   - ✓ Re-evaluated integration options (Standalone, Shopify App, BinderPOS Integration)
+   - ✓ Updated approach to implement as a fully integrated Shopify app
+   - ✓ Created Shopify app scaffold using Shopify CLI
+   - ✓ Documented the approach and implementation plan in `tko-loyalty-shopify-app/shopify-app-transition-plan.md`
    - ✓ Updated activeContext.md to reflect the decision
+   - ✓ Set up environment variables for Shopify integration
+   - ✓ Resolved deployment issues with Render.com:
+     - ✓ Updated database configuration to use PostgreSQL instead of SQLite
+     - ✓ Fixed URL configuration issues in vite.config.ts
+     - ✓ Updated environment variables for proper deployment
+     - ✓ Configured proper redirect URLs in shopify.app.toml
+   - ✓ Fixed Shopify app integration issues:
+     - ✓ Changed app distribution from AppDistribution.AppStore to AppDistribution.ShopifyAdmin
+     - ✓ Updated authentication flow to use authenticate.admin instead of login
+     - ✓ Modified routes to handle admin app authentication properly
+     - ✓ Committed and pushed changes to GitHub repository
+     - ✓ Added adminApiAccessToken parameter to shopifyApp configuration
+     - ✓ Added SHOPIFY_ADMIN_API_ACCESS_TOKEN environment variable on Render.com
+   - Next steps for app integration:
+     - Uninstall the current app from Shopify admin
+     - Reinstall the app after Render.com deploys the updated code
+     - Verify the app appears in the Shopify admin interface
 
-2. Connect frontend to backend API:
+2. Complete Core Shopify App Features:
 
-   - Replace mock data with actual API calls
-   - Implement API service layer in frontend
-   - Add loading states and error handling for API requests
-   - Ensure proper authentication token management
+   - Implement points calculation logic based on order value
+   - Create database models for storing customer points
+   - Set up point history tracking
+   - Implement point expiration rules
+   - Finalize tier benefits implementation
+   - Create automatic tier assignment based on customer spending
+   - Implement manual tier override capabilities for admin
+   - Complete rewards redemption flow
+   - Build customer-facing loyalty dashboard
 
-3. Implement integration with external systems:
+3. Implement Shopify Integration Points:
 
-   - Create Shopify integration module with OAuth authentication
-   - Develop BinderPOS integration module with API key authentication
-   - Implement data synchronization service
-   - Set up webhooks for Shopify and scheduled synchronization for BinderPOS
+   - Set up webhooks to capture new orders
+   - Implement point calculation on order completion
+   - Create transaction records for point history
+   - Integrate with Shopify customer data
+   - Implement customer tagging for tier identification
+   - Create discount code generation for rewards
 
-4. Develop data aggregation logic:
+4. Testing and Debugging:
 
-   - Create customer spend calculation service
-   - Implement tier assignment rules
-   - Set up data consistency checks
-   - Create audit logging for data changes
+   - Comprehensive testing with sample data
+   - Verify points calculation accuracy
+   - Test tier progression logic
+   - Validate reward redemption flow
+   - Performance testing under load
 
-5. Develop testing after implementation:
-   - Create tests based on the actual implementation
-   - Focus on critical paths and integration points
-   - Ensure end-to-end functionality with real data
+5. Deployment and Publication:
+   - Prepare app for Shopify App Store submission
+   - Create app listing materials (screenshots, descriptions)
+   - Set up production environment
+   - Configure monitoring and error tracking
+   - Prepare user documentation

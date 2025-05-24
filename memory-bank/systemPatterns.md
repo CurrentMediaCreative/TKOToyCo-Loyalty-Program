@@ -6,56 +6,60 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 
 ## System Architecture
 
-The TKO Toy Co Loyalty Program follows a modular, service-oriented architecture to ensure flexibility, scalability, and maintainability. The system is designed to integrate with existing platforms (Shopify and POS Binder) while providing a standalone loyalty management solution.
+The TKO Toy Co Loyalty Program has transitioned to a fully integrated Shopify app architecture. This approach leverages Shopify's infrastructure while providing a comprehensive loyalty management solution.
 
 ```mermaid
 flowchart TD
-    subgraph "Presentation Layer"
-        A[Admin Dashboard] --> |API Calls| D[API Gateway]
-        B[Customer Portal] --> |API Calls| D
-        C[Desktop Application] --> |API Calls| D
+    subgraph "Shopify App"
+        A[Admin Dashboard] --> |App Bridge| D[Shopify App Backend]
+        B[Customer Portal] --> |Shopify API| D
+        
+        subgraph "App Backend"
+            D --> E[Authentication]
+            D --> F[Loyalty Core]
+            D --> G[Webhooks]
+            D --> H[Notification]
+        end
+        
+        subgraph "Core Services"
+            F --> I[Customer Management]
+            F --> J[Tier Management]
+            F --> K[Reward Management]
+            F --> L[Points Management]
+        end
+        
+        subgraph "Integration"
+            G --> M[Order Processing]
+            G --> N[Customer Events]
+            H --> O[Email Notifications]
+        end
+        
+        subgraph "Data Layer"
+            P[(Prisma DB)]
+            
+            I <--> P
+            J <--> P
+            K <--> P
+            L <--> P
+        end
     end
-
-    subgraph "API Layer"
-        D --> E[Authentication Service]
-        D --> F[Loyalty Core Service]
-        D --> G[Integration Service]
-        D --> H[Notification Service]
+    
+    subgraph "Shopify Platform"
+        Q[Shopify Admin]
+        R[Shopify Storefront]
+        S[Shopify API]
+        
+        Q <--> A
+        R <--> B
+        S <--> D
     end
-
-    subgraph "Core Services"
-        F --> I[Customer Service]
-        F --> J[Tier Management Service]
-        F --> K[Reward Service]
-        F --> L[Transaction Service]
-    end
-
-    subgraph "Integration Layer"
-        G --> M[Shopify Connector]
-        G --> N[POS Binder Connector]
-        H --> O[Email Service Connector]
-    end
-
-    subgraph "Data Layer"
-        P[(Customer Database)]
-        Q[(Transaction Database)]
-        R[(Reward Database)]
-        S[(Tier Configuration)]
-
-        I <--> P
-        J <--> S
-        K <--> R
-        L <--> Q
-    end
-
+    
     subgraph "External Systems"
-        T[Shopify]
-        U[POS Binder]
-        V[Email Service]
-
-        M <--> T
-        N <--> U
-        O <--> V
+        T[BinderPOS]
+        U[Email Service]
+        
+        D <--> T
+        H <--> U
     end
 ```
 
@@ -445,6 +449,36 @@ sequenceDiagram
    - Develop retry mechanisms for transient failures
    - Create fallback strategies for critical operations
    - Implement comprehensive logging and monitoring
+
+## Shopify App Deployment Patterns
+
+1. **Environment Configuration**
+
+   - Use environment variables for all configuration settings
+   - Separate development and production configurations
+   - Store sensitive information (API keys, secrets) in environment variables
+   - Configure database connection strings via environment variables
+
+2. **Database Configuration**
+
+   - Use PostgreSQL for production deployments
+   - Configure Prisma ORM for database access
+   - Implement database migrations for schema changes
+   - Use connection pooling for efficient database connections
+
+3. **URL Configuration**
+
+   - Configure application URLs with proper protocol (https://)
+   - Set up redirect URLs for authentication flows
+   - Ensure consistent URL format across configuration files
+   - Avoid URL parsing issues in build configurations
+
+4. **Deployment Configuration**
+
+   - Configure build and start commands for the specific subdirectory
+   - Set up proper environment variables in the hosting platform
+   - Configure automatic deployments from GitHub
+   - Implement health checks for deployment verification
 
 ## Task Context Management Pattern
 

@@ -1,14 +1,14 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "1db648cd768e29b2ab1520bba90d0901"
+client_id = "33b7d6b70771050b1b972c2ab60d9a0b"
 name = "tko-knock-out-loyalty"
 handle = "tko-knock-out-loyalty"
 application_url = "https://tkotoyco-loyalty-program.onrender.com"
 embedded = true
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = true
+include_config_on_deploy = true
 
 [webhooks]
 api_version = "2025-04"
@@ -23,14 +23,10 @@ api_version = "2025-04"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products"
+scopes = "read_analytics,read_customers,read_draft_orders,read_orders,read_products,read_reports,read_channels,read_shopify_payments_accounts,read_store_credit_account_transactions,read_store_credit_accounts,write_customers"
 
 [auth]
-redirect_urls = [
-  "https://tkotoyco-loyalty-program.onrender.com/auth/callback",
-  "https://tkotoyco-loyalty-program.onrender.com/auth/shopify/callback",
-  "https://tkotoyco-loyalty-program.onrender.com/api/auth/callback"
-]
+redirect_urls = [ "https://tkotoyco-loyalty-program.onrender.com/auth/callback", "https://tkotoyco-loyalty-program.onrender.com/auth/shopify/callback", "https://tkotoyco-loyalty-program.onrender.com/api/auth/callback" ]
 
 [pos]
 embedded = false
