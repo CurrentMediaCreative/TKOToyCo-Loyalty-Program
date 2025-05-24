@@ -11,6 +11,10 @@ declare module "@shopify/shopify-app-remix/server" {
   };
   export function shopifyApp(options: any): any;
   export const LATEST_API_VERSION: string;
+  export const boundary: {
+    error: (error: any) => any;
+    headers: (args: any) => Headers;
+  };
 }
 
 declare module "@shopify/shopify-app-remix/adapters/node" {}
@@ -35,4 +39,10 @@ declare module "@shopify/app-bridge-react" {
   }
 
   export function TitleBar(props: TitleBarProps): JSX.Element;
+
+  export interface NavMenuProps {
+    children?: React.ReactNode;
+  }
+
+  export function NavMenu(props: NavMenuProps): JSX.Element;
 }
