@@ -65,8 +65,8 @@ export async function updateCustomerTierMetafields(
     // Create metafields using the Shopify Admin API
     const response = await admin.graphql(
       `#graphql
-      mutation UpdateCustomerMetafields($input: MetafieldsSetInput!) {
-        metafieldsSet(metafields: $input) {
+      mutation UpdateCustomerMetafields($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
           metafields {
             id
             namespace
@@ -81,35 +81,36 @@ export async function updateCustomerTierMetafields(
       }`,
       {
         variables: {
-          input: {
-            ownerId: customerGid,
-            metafields: [
-              {
-                namespace: METAFIELD_NAMESPACE,
-                key: METAFIELD_KEYS.TIER_NAME,
-                type: "single_line_text_field",
-                value: tier.name,
-              },
-              {
-                namespace: METAFIELD_NAMESPACE,
-                key: METAFIELD_KEYS.TIER_LEVEL,
-                type: "number_integer",
-                value: tierLevel.toString(),
-              },
-              {
-                namespace: METAFIELD_NAMESPACE,
-                key: METAFIELD_KEYS.TOTAL_SPEND,
-                type: "number_decimal",
-                value: totalSpend.toString(),
-              },
-              {
-                namespace: METAFIELD_NAMESPACE,
-                key: METAFIELD_KEYS.TIER_BENEFITS,
-                type: "list.single_line_text_field",
-                value: JSON.stringify(benefits),
-              },
-            ],
-          },
+          metafields: [
+            {
+              ownerId: customerGid,
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEYS.TIER_NAME,
+              type: "single_line_text_field",
+              value: tier.name,
+            },
+            {
+              ownerId: customerGid,
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEYS.TIER_LEVEL,
+              type: "number_integer",
+              value: tierLevel.toString(),
+            },
+            {
+              ownerId: customerGid,
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEYS.TOTAL_SPEND,
+              type: "number_decimal",
+              value: totalSpend.toString(),
+            },
+            {
+              ownerId: customerGid,
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEYS.TIER_BENEFITS,
+              type: "list.single_line_text_field",
+              value: JSON.stringify(benefits),
+            },
+          ],
         },
       },
     );
@@ -265,8 +266,8 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
           // Create metafields using the Shopify Admin API
           const response = await admin.graphql(
             `#graphql
-            mutation UpdateCustomerMetafields($input: MetafieldsSetInput!) {
-              metafieldsSet(metafields: $input) {
+            mutation UpdateCustomerMetafields($metafields: [MetafieldsSetInput!]!) {
+              metafieldsSet(metafields: $metafields) {
                 metafields {
                   id
                   namespace
@@ -281,35 +282,36 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
             }`,
             {
               variables: {
-                input: {
-                  ownerId: customerId,
-                  metafields: [
-                    {
-                      namespace: METAFIELD_NAMESPACE,
-                      key: METAFIELD_KEYS.TIER_NAME,
-                      type: "single_line_text_field",
-                      value: tierInfo.name,
-                    },
-                    {
-                      namespace: METAFIELD_NAMESPACE,
-                      key: METAFIELD_KEYS.TIER_LEVEL,
-                      type: "number_integer",
-                      value: tierInfo.level.toString(),
-                    },
-                    {
-                      namespace: METAFIELD_NAMESPACE,
-                      key: METAFIELD_KEYS.TOTAL_SPEND,
-                      type: "number_decimal",
-                      value: totalSpend.toString(),
-                    },
-                    {
-                      namespace: METAFIELD_NAMESPACE,
-                      key: METAFIELD_KEYS.TIER_BENEFITS,
-                      type: "list.single_line_text_field",
-                      value: JSON.stringify(tierInfo.benefits),
-                    },
-                  ],
-                },
+                metafields: [
+                  {
+                    ownerId: customerId,
+                    namespace: METAFIELD_NAMESPACE,
+                    key: METAFIELD_KEYS.TIER_NAME,
+                    type: "single_line_text_field",
+                    value: tierInfo.name,
+                  },
+                  {
+                    ownerId: customerId,
+                    namespace: METAFIELD_NAMESPACE,
+                    key: METAFIELD_KEYS.TIER_LEVEL,
+                    type: "number_integer",
+                    value: tierInfo.level.toString(),
+                  },
+                  {
+                    ownerId: customerId,
+                    namespace: METAFIELD_NAMESPACE,
+                    key: METAFIELD_KEYS.TOTAL_SPEND,
+                    type: "number_decimal",
+                    value: totalSpend.toString(),
+                  },
+                  {
+                    ownerId: customerId,
+                    namespace: METAFIELD_NAMESPACE,
+                    key: METAFIELD_KEYS.TIER_BENEFITS,
+                    type: "list.single_line_text_field",
+                    value: JSON.stringify(tierInfo.benefits),
+                  },
+                ],
               },
             },
           );
