@@ -11,13 +11,22 @@ import prisma from "./db.server";
 const getAppUrl = () => {
   try {
     const url = process.env.SHOPIFY_APP_URL || "";
-    // If no protocol, add https://
-    if (!url.includes("://")) {
-      return `https://${url}`;
+
+    // Handle empty URL case
+    if (!url || url.trim() === "") {
+      console.warn("SHOPIFY_APP_URL is empty, using localhost fallback");
+      return "http://localhost:3000";
     }
+
+    // If no protocol, add https://
+    let formattedUrl = url;
+    if (!url.includes("://")) {
+      formattedUrl = `https://${url}`;
+    }
+
     // Validate URL by attempting to construct a URL object
-    new URL(url);
-    return url; // Return the full URL with protocol
+    new URL(formattedUrl);
+    return formattedUrl; // Return the full URL with protocol
   } catch (error) {
     console.error("Invalid SHOPIFY_APP_URL:", error);
     // Fallback to a safe default for local development

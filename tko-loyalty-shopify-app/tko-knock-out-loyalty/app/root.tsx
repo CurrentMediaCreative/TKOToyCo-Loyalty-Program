@@ -51,12 +51,23 @@ export default function App() {
 
 // Add Shopify document response headers
 export const headers = () => {
-  return addDocumentResponseHeaders({
-    headers: {
-      "Content-Type": "text/html; charset=utf-8", // Ensure proper content type with charset
+  try {
+    return addDocumentResponseHeaders({
+      headers: {
+        "Content-Type": "text/html; charset=utf-8", // Ensure proper content type with charset
+        "X-Content-Type-Options": "nosniff",
+        "X-UA-Compatible": "IE=edge", // Add this to ensure standards mode in IE
+        "X-Frame-Options": "SAMEORIGIN", // Add this to improve security
+      },
+    });
+  } catch (error) {
+    console.error("Error adding document response headers:", error);
+    // Return basic headers if Shopify headers fail
+    return {
+      "Content-Type": "text/html; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
-      "X-UA-Compatible": "IE=edge", // Add this to ensure standards mode in IE
-      "X-Frame-Options": "SAMEORIGIN", // Add this to improve security
-    },
-  });
+      "X-UA-Compatible": "IE=edge",
+      "X-Frame-Options": "SAMEORIGIN",
+    };
+  }
 };

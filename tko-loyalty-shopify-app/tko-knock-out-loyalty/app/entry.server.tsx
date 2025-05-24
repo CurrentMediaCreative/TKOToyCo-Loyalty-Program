@@ -16,7 +16,15 @@ export default async function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext,
 ) {
-  addDocumentResponseHeaders(request, responseHeaders);
+  try {
+    addDocumentResponseHeaders(request, responseHeaders);
+  } catch (error) {
+    console.error("Error adding document response headers:", error);
+    // Add basic security headers if Shopify headers fail
+    responseHeaders.set("Content-Type", "text/html; charset=utf-8");
+    responseHeaders.set("X-Content-Type-Options", "nosniff");
+    responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
+  }
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? "") ? "onAllReady" : "onShellReady";
 
