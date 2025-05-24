@@ -580,11 +580,7 @@ export default function Index() {
                   </BlockStack>
                 </Card>
               </Grid.Cell>
-            </Grid>
-          </Layout.Section>
 
-          <Layout.Section>
-            <Grid>
               <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
                 <Card>
                   <BlockStack gap="400">
