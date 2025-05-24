@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
@@ -14,6 +14,8 @@ import {
   IndexTable,
   useIndexResourceState,
   Tabs,
+  Banner,
+  InlineStack,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -21,53 +23,116 @@ import { authenticate } from "../shopify.server";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
-  // Fetch customers from Shopify
-  const response = await admin.graphql(
-    `#graphql
-      query GetCustomers($first: Int!) {
-        customers(first: $first) {
-          edges {
-            node {
-              id
-              firstName
-              lastName
-              email
-              phone
-              numberOfOrders
-              amountSpent {
-                amount
+  // Function to fetch all customers using cursor-based pagination
+  async function fetchAllCustomers() {
+    let allCustomers: any[] = [];
+    let hasNextPage = true;
+    let cursor: string | null = null;
+    let pageCount = 0;
+    const MAX_PAGES = 20; // Safety limit to prevent infinite loops
+    const PER_PAGE = 250; // Maximum allowed by Shopify
+
+    try {
+      while (hasNextPage && pageCount < MAX_PAGES) {
+        // Build the query with or without cursor
+        const queryVariables: { first: number; after?: string } = cursor
+          ? { first: PER_PAGE, after: cursor }
+          : { first: PER_PAGE };
+
+        const response: any = await admin.graphql(
+          `#graphql
+            query GetCustomers($first: Int!, $after: String) {
+              customers(first: $first, after: $after) {
+                edges {
+                  node {
+                    id
+                    firstName
+                    lastName
+                    email
+                    phone
+                    numberOfOrders
+                    amountSpent {
+                      amount
+                    }
+                    tags
+                    createdAt
+                    defaultAddress {
+                      city
+                      province
+                      country
+                    }
+                  }
+                  cursor
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
               }
-              tags
-              createdAt
-              defaultAddress {
-                city
-                province
-                country
-              }
-            }
-          }
+            }`,
+          { variables: queryVariables },
+        );
+
+        const responseJson: any = await response.json();
+        const customersData: any = responseJson.data?.customers;
+
+        if (!customersData) {
+          console.error("No customer data returned from API");
+          break;
         }
-      }`,
-    {
-      variables: {
-        first: 50,
-      },
-    },
-  );
 
-  const responseJson = await response.json();
-  const customers =
-    responseJson.data?.customers?.edges.map((edge: any) => edge.node) || [];
+        // Extract customers from this page
+        const pageCustomers = customersData.edges.map((edge: any) => edge.node);
+        allCustomers = [...allCustomers, ...pageCustomers];
 
-  return json({
-    customers,
-  });
+        // Update pagination info for next iteration
+        hasNextPage = customersData.pageInfo.hasNextPage;
+        cursor = customersData.pageInfo.endCursor;
+        pageCount++;
+
+        console.log(
+          `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
+        );
+      }
+
+      return allCustomers;
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+      throw error;
+    }
+  }
+
+  try {
+    const customers = await fetchAllCustomers();
+    return json({
+      customers,
+      success: true,
+      error: null, // Add error property with null value for success case
+    });
+  } catch (error) {
+    console.error("Error in loader:", error);
+    return json({
+      customers: [],
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    });
+  }
 };
 
 export default function CustomersPage() {
-  const { customers } = useLoaderData<typeof loader>();
+  interface LoaderData {
+    customers: any[];
+    success: boolean;
+    error: string | null;
+  }
+
+  const { customers, success, error } = useLoaderData<LoaderData>();
   const [searchValue, setSearchValue] = useState("");
   const [selectedTab, setSelectedTab] = useState(0);
+  const [sortField, setSortField] = useState("name");
+  const [sortDirection, setSortDirection] = useState<
+    "ascending" | "descending"
+  >("ascending");
 
   const resourceName = {
     singular: "customer",
@@ -120,16 +185,6 @@ export default function CustomersPage() {
     setSelectedTab(selectedTabIndex);
   };
 
-  const filteredCustomers = customers.filter((customer: any) => {
-    const searchRegex = new RegExp(searchValue, "i");
-    return (
-      searchRegex.test(customer.firstName) ||
-      searchRegex.test(customer.lastName) ||
-      searchRegex.test(customer.email) ||
-      searchRegex.test(customer.phone)
-    );
-  });
-
   // Function to determine customer tier based on total spent
   const getCustomerTier = (amountSpent: any) => {
     const spent = parseFloat(amountSpent?.amount || "0");
@@ -158,46 +213,142 @@ export default function CustomersPage() {
     }
   };
 
-  const rowMarkup = filteredCustomers
-    .map((customer: any, index: number) => {
-      const tier = getCustomerTier(customer.amountSpent);
+  // Handle sorting when a column header is clicked
+  const handleSort = useCallback(
+    (field: string) => {
+      if (sortField === field) {
+        // Toggle direction if clicking the same field
+        setSortDirection(
+          sortDirection === "ascending" ? "descending" : "ascending",
+        );
+      } else {
+        // Set new field and default to ascending
+        setSortField(field);
+        setSortDirection("ascending");
+      }
+    },
+    [sortField, sortDirection],
+  );
 
+  // Get sort indicator for column headers
+  const getSortIndicator = (field: string) => {
+    if (sortField !== field) return null;
+    return sortDirection === "ascending" ? " ↑" : " ↓";
+  };
+
+  // Filter customers by search term and selected tab
+  const filteredCustomers = customers
+    .map((customer: any) => {
+      // Add tier to each customer object
+      return {
+        ...customer,
+        tier: getCustomerTier(customer.amountSpent),
+        name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
+        location: customer.defaultAddress
+          ? `${customer.defaultAddress.city || ""}, ${customer.defaultAddress.province || ""} ${customer.defaultAddress.country || ""}`
+          : "No address",
+        spentAmount: parseFloat(customer.amountSpent?.amount || "0"),
+      };
+    })
+    .filter((customer: any) => {
       // Filter by tier if a tab other than "All" is selected
-      if (selectedTab > 0 && tier !== tabs[selectedTab].content) {
-        return null;
+      if (selectedTab > 0 && customer.tier !== tabs[selectedTab].content) {
+        return false;
       }
 
-      const id = customer.id.replace("gid://shopify/Customer/", "");
-      const name = `${customer.firstName} ${customer.lastName}`;
-      const location = customer.defaultAddress
-        ? `${customer.defaultAddress.city}, ${customer.defaultAddress.province || ""} ${customer.defaultAddress.country}`
-        : "No address";
+      // Filter by search term
+      if (!searchValue) return true;
 
+      const searchRegex = new RegExp(searchValue, "i");
       return (
-        <IndexTable.Row
-          id={id}
-          key={id}
-          selected={selectedResources.includes(id)}
-          position={index}
-        >
-          <IndexTable.Cell>
-            <Text variant="bodyMd" fontWeight="bold" as="span">
-              {name}
-            </Text>
-          </IndexTable.Cell>
-          <IndexTable.Cell>{customer.email}</IndexTable.Cell>
-          <IndexTable.Cell>
-            <Badge tone={getTierColor(tier) as any}>{tier}</Badge>
-          </IndexTable.Cell>
-          <IndexTable.Cell>
-            ${parseFloat(customer.amountSpent?.amount || "0").toFixed(2)}
-          </IndexTable.Cell>
-          <IndexTable.Cell>{customer.numberOfOrders}</IndexTable.Cell>
-          <IndexTable.Cell>{location}</IndexTable.Cell>
-        </IndexTable.Row>
+        searchRegex.test(customer.name) ||
+        searchRegex.test(customer.email || "") ||
+        searchRegex.test(customer.phone || "")
       );
-    })
-    .filter(Boolean); // Remove null rows (filtered out by tier)
+    });
+
+  // Sort the filtered customers
+  const sortedCustomers = [...filteredCustomers].sort((a, b) => {
+    let valueA, valueB;
+
+    switch (sortField) {
+      case "name":
+        valueA = a.name || "";
+        valueB = b.name || "";
+        break;
+      case "email":
+        valueA = a.email || "";
+        valueB = b.email || "";
+        break;
+      case "tier":
+        // Custom tier sorting by level instead of alphabetically
+        const tierOrder: Record<string, number> = {
+          Featherweight: 1,
+          Lightweight: 2,
+          Welterweight: 3,
+          Heavyweight: 4,
+          "Reigning Champion": 5,
+        };
+        valueA = tierOrder[a.tier as string] || 0;
+        valueB = tierOrder[b.tier as string] || 0;
+        break;
+      case "spent":
+        valueA = a.spentAmount;
+        valueB = b.spentAmount;
+        break;
+      case "orders":
+        valueA = a.numberOfOrders || 0;
+        valueB = b.numberOfOrders || 0;
+        break;
+      case "location":
+        valueA = a.location || "";
+        valueB = b.location || "";
+        break;
+      default:
+        valueA = a.name || "";
+        valueB = b.name || "";
+    }
+
+    // For string comparisons
+    if (typeof valueA === "string" && typeof valueB === "string") {
+      return sortDirection === "ascending"
+        ? valueA.localeCompare(valueB)
+        : valueB.localeCompare(valueA);
+    }
+
+    // For numeric comparisons
+    return sortDirection === "ascending"
+      ? (valueA as number) - (valueB as number)
+      : (valueB as number) - (valueA as number);
+  });
+
+  const rowMarkup = sortedCustomers.map((customer: any, index: number) => {
+    const id = customer.id.replace("gid://shopify/Customer/", "");
+
+    return (
+      <IndexTable.Row
+        id={id}
+        key={id}
+        selected={selectedResources.includes(id)}
+        position={index}
+      >
+        <IndexTable.Cell>
+          <Text variant="bodyMd" fontWeight="bold" as="span">
+            {customer.name || "Unknown"}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>{customer.email || "No email"}</IndexTable.Cell>
+        <IndexTable.Cell>
+          <Badge tone={getTierColor(customer.tier) as any}>
+            {customer.tier}
+          </Badge>
+        </IndexTable.Cell>
+        <IndexTable.Cell>${customer.spentAmount.toFixed(2)}</IndexTable.Cell>
+        <IndexTable.Cell>{customer.numberOfOrders || 0}</IndexTable.Cell>
+        <IndexTable.Cell>{customer.location}</IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
 
   const emptyStateMarkup = (
     <EmptyState
@@ -216,6 +367,12 @@ export default function CustomersPage() {
       <TitleBar title="Customers" />
       <Layout>
         <Layout.Section>
+          {!success && (
+            <Banner tone="critical">
+              <p>Error loading customers: {error || "Unknown error"}</p>
+            </Banner>
+          )}
+
           <Card>
             <Tabs
               tabs={tabs}
@@ -238,6 +395,13 @@ export default function CustomersPage() {
                 <Button variant="primary">Add to tier</Button>
               </div>
             </div>
+
+            <InlineStack align="center" gap="400">
+              <Text as="p" variant="bodyMd">
+                {customers.length} total customers, {rowMarkup.length} shown
+              </Text>
+            </InlineStack>
+
             <IndexTable
               resourceName={resourceName}
               itemCount={rowMarkup.length}
@@ -246,13 +410,47 @@ export default function CustomersPage() {
               }
               onSelectionChange={handleSelectionChange}
               headings={[
-                { title: "Name" },
-                { title: "Email" },
-                { title: "Tier" },
-                { title: "Total spent" },
-                { title: "Orders" },
-                { title: "Location" },
+                { title: `Name${getSortIndicator("name")}` },
+                { title: `Email${getSortIndicator("email")}` },
+                { title: `Tier${getSortIndicator("tier")}` },
+                { title: `Total spent${getSortIndicator("spent")}` },
+                { title: `Orders${getSortIndicator("orders")}` },
+                { title: `Location${getSortIndicator("location")}` },
               ]}
+              sortable={[true, true, true, true, true, true]}
+              sortDirection={sortDirection}
+              sortColumnIndex={
+                sortField === "name"
+                  ? 0
+                  : sortField === "email"
+                    ? 1
+                    : sortField === "tier"
+                      ? 2
+                      : sortField === "spent"
+                        ? 3
+                        : sortField === "orders"
+                          ? 4
+                          : sortField === "location"
+                            ? 5
+                            : 0
+              }
+              onSort={(index) => {
+                const field =
+                  index === 0
+                    ? "name"
+                    : index === 1
+                      ? "email"
+                      : index === 2
+                        ? "tier"
+                        : index === 3
+                          ? "spent"
+                          : index === 4
+                            ? "orders"
+                            : index === 5
+                              ? "location"
+                              : "name";
+                handleSort(field);
+              }}
               emptyState={emptyStateMarkup}
             >
               {rowMarkup}

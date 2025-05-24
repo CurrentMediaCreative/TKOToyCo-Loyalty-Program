@@ -22,43 +22,94 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   try {
-    // Fetch customers from Shopify
-    const customersResponse = await admin.graphql(
-      `#graphql
-        query GetCustomers($first: Int!) {
-          customers(first: $first, sortKey: UPDATED_AT, reverse: true) {
-            edges {
-              node {
-                id
-                firstName
-                lastName
-                email
-                amountSpent {
-                  amount
-                }
-                numberOfOrders
-                tags
-                lastOrder {
-                  createdAt
-                }
-              }
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
-          }
-        }`,
-      {
-        variables: {
-          first: 50,
-        },
-      },
-    );
+    // Function to fetch all customers using cursor-based pagination
+    async function fetchAllCustomers() {
+      let allCustomers: any[] = [];
+      let hasNextPage = true;
+      let cursor: string | null = null;
+      let pageCount = 0;
+      const MAX_PAGES = 20; // Safety limit to prevent infinite loops
+      const PER_PAGE = 250; // Maximum allowed by Shopify
 
-    const responseJson = await customersResponse.json();
-    const customers =
-      responseJson.data?.customers?.edges.map((edge: any) => edge.node) || [];
+      try {
+        while (hasNextPage && pageCount < MAX_PAGES) {
+          // Build the query with or without cursor
+          const queryVariables: {
+            first: number;
+            after?: string;
+            sortKey: string;
+            reverse: boolean;
+          } = cursor
+            ? {
+                first: PER_PAGE,
+                after: cursor,
+                sortKey: "UPDATED_AT",
+                reverse: true,
+              }
+            : { first: PER_PAGE, sortKey: "UPDATED_AT", reverse: true };
+
+          const response: any = await admin.graphql(
+            `#graphql
+              query GetCustomers($first: Int!, $after: String, $sortKey: CustomerSortKeys!, $reverse: Boolean!) {
+                customers(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+                  edges {
+                    node {
+                      id
+                      firstName
+                      lastName
+                      email
+                      amountSpent {
+                        amount
+                      }
+                      numberOfOrders
+                      tags
+                      lastOrder {
+                        createdAt
+                      }
+                    }
+                    cursor
+                  }
+                  pageInfo {
+                    hasNextPage
+                    endCursor
+                  }
+                }
+              }`,
+            { variables: queryVariables },
+          );
+
+          const responseJson: any = await response.json();
+          const customersData: any = responseJson.data?.customers;
+
+          if (!customersData) {
+            console.error("No customer data returned from API");
+            break;
+          }
+
+          // Extract customers from this page
+          const pageCustomers = customersData.edges.map(
+            (edge: any) => edge.node,
+          );
+          allCustomers = [...allCustomers, ...pageCustomers];
+
+          // Update pagination info for next iteration
+          hasNextPage = customersData.pageInfo.hasNextPage;
+          cursor = customersData.pageInfo.endCursor;
+          pageCount++;
+
+          console.log(
+            `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
+          );
+        }
+
+        return allCustomers;
+      } catch (error) {
+        console.error("Error fetching customers:", error);
+        throw error;
+      }
+    }
+
+    const customers = await fetchAllCustomers();
 
     // Calculate total spent across all customers
     const totalSpent = customers.reduce(
