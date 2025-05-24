@@ -129,10 +129,10 @@ export default function CustomersPage() {
   const { customers, success, error } = useLoaderData<LoaderData>();
   const [searchValue, setSearchValue] = useState("");
   const [selectedTab, setSelectedTab] = useState(0);
-  const [sortField, setSortField] = useState("name");
+  const [sortField, setSortField] = useState("spent");
   const [sortDirection, setSortDirection] = useState<
     "ascending" | "descending"
-  >("ascending");
+  >("descending");
   const [currentPage, setCurrentPage] = useState(1);
   const customersPerPage = 50;
 
@@ -234,7 +234,7 @@ export default function CustomersPage() {
 
   // Get sort indicator for column headers
   const getSortIndicator = (field: string) => {
-    if (sortField !== field) return null;
+    if (sortField !== field) return "";
     return sortDirection === "ascending" ? " ↑" : " ↓";
   };
 

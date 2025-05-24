@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, Link } from "@remix-run/react";
+import { useState, useCallback } from "react";
 import {
   Page,
   Layout,
@@ -17,6 +18,7 @@ import {
 } from "@shopify/polaris";
 import { ViewIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
+import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -66,6 +68,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                       lastOrder {
                         createdAt
                       }
+                      orders(first: 20, sortKey: CREATED_AT, reverse: true) {
+                        edges {
+                          node {
+                            id
+                            createdAt
+                            totalPriceSet {
+                              shopMoney {
+                                amount
+                              }
+                            }
+                          }
+                        }
+                      }
                     }
                     cursor
                   }
@@ -111,12 +126,41 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     const customers = await fetchAllCustomers();
 
-    // Calculate total spent across all customers
+    // Calculate spending for different time periods
+    const today = new Date();
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
+
+    // Calculate total spent (all time)
     const totalSpent = customers.reduce(
       (sum: number, customer: any) =>
         sum + parseFloat(customer.amountSpent?.amount || "0"),
       0,
     );
+
+    // Calculate month and year spending from orders
+    let monthSpending = 0;
+    let yearSpending = 0;
+
+    customers.forEach((customer: any) => {
+      const orders =
+        customer.orders?.edges?.map((edge: any) => edge.node) || [];
+
+      orders.forEach((order: any) => {
+        const orderDate = new Date(order.createdAt);
+        const orderAmount = parseFloat(
+          order.totalPriceSet?.shopMoney?.amount || "0",
+        );
+
+        if (orderDate >= firstDayOfMonth) {
+          monthSpending += orderAmount;
+        }
+
+        if (orderDate >= firstDayOfYear) {
+          yearSpending += orderAmount;
+        }
+      });
+    });
 
     // Calculate active customers (with orders in the last 30 days)
     const thirtyDaysAgo = new Date();
@@ -172,49 +216,148 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     });
 
-    // Get top customers
-    const topCustomers = customerTiers.slice(0, 3).map((customer: any) => ({
-      id: customer.id.replace("gid://shopify/Customer/", ""),
-      name:
-        `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
-        "Unknown",
-      tier: customer.tier,
-      spent: `$${parseFloat(customer.amountSpent?.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      orders: customer.numberOfOrders || 0,
-    }));
+    // Set hours to beginning of day for consistent comparison
+    today.setHours(0, 0, 0, 0);
+
+    // Process customers to add today's and this month's spending
+    const processedCustomers = customerTiers.map((customer: any) => {
+      // Extract orders if available
+      const orders =
+        customer.orders?.edges?.map((edge: any) => edge.node) || [];
+
+      // Calculate today's spending
+      const todaySpending = orders.reduce((sum: number, order: any) => {
+        const orderDate = new Date(order.createdAt);
+        if (orderDate >= today) {
+          return (
+            sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
+          );
+        }
+        return sum;
+      }, 0);
+
+      // Calculate this month's spending
+      const monthSpending = orders.reduce((sum: number, order: any) => {
+        const orderDate = new Date(order.createdAt);
+        if (orderDate >= firstDayOfMonth) {
+          return (
+            sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
+          );
+        }
+        return sum;
+      }, 0);
+
+      return {
+        ...customer,
+        todaySpending,
+        monthSpending,
+      };
+    });
+
+    // Get top 5 competitors today
+    const topCompetitorsToday = [...processedCustomers]
+      .filter((customer) => customer.todaySpending > 0)
+      .sort((a, b) => b.todaySpending - a.todaySpending)
+      .slice(0, 5)
+      .map((customer: any) => ({
+        id: customer.id.replace("gid://shopify/Customer/", ""),
+        name:
+          `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
+          "Unknown",
+        tier: customer.tier,
+        spent: `$${customer.todaySpending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        orders: customer.numberOfOrders || 0,
+      }));
+
+    // Get top 5 competitors this month
+    const topCompetitorsMonth = [...processedCustomers]
+      .filter((customer) => customer.monthSpending > 0)
+      .sort((a, b) => b.monthSpending - a.monthSpending)
+      .slice(0, 5)
+      .map((customer: any) => ({
+        id: customer.id.replace("gid://shopify/Customer/", ""),
+        name:
+          `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
+          "Unknown",
+        tier: customer.tier,
+        spent: `$${customer.monthSpending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        orders: customer.numberOfOrders || 0,
+      }));
 
     // Calculate stats
     const stats = {
       totalCustomers: customers.length,
       activeCustomers,
-      totalSpent: `$${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      totalSpent: totalSpent.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+      monthSpent: monthSpending.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+      yearSpent: yearSpending.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+      currentYear: today.getFullYear(),
       topTier: "Reigning Champion",
       topTierCustomers: tierCounts["Reigning Champion"],
     };
 
     return json({
       stats,
-      topCustomers,
+      topCompetitorsToday,
+      topCompetitorsMonth,
     });
   } catch (error) {
     console.error("Error fetching dashboard data:", error);
 
     // Return empty data in case of error
+    const currentYear = new Date().getFullYear();
     return json({
       stats: {
         totalCustomers: 0,
         activeCustomers: 0,
-        totalSpent: "$0.00",
+        totalSpent: "0.00",
+        monthSpent: "0.00",
+        yearSpent: "0.00",
+        currentYear: currentYear,
         topTier: "Reigning Champion",
         topTierCustomers: 0,
       },
-      topCustomers: [],
+      topCompetitorsToday: [],
+      topCompetitorsMonth: [],
     });
   }
 };
 
 export default function Index() {
-  const { stats, topCustomers } = useLoaderData<typeof loader>();
+  const { stats, topCompetitorsToday, topCompetitorsMonth } =
+    useLoaderData<typeof loader>();
+
+  // State for total spent filter and selected customer
+  const [spendingFilter, setSpendingFilter] = useState<
+    "month" | "year" | "total"
+  >("month");
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+
+  // Handle opening and closing the customer loyalty card
+  const handleViewCustomer = useCallback((customer: any) => {
+    setSelectedCustomer(customer);
+  }, []);
+
+  const handleCloseCustomerCard = useCallback(() => {
+    setSelectedCustomer(null);
+  }, []);
+
+  // Get the appropriate spending amount based on filter
+  const displayedSpending =
+    spendingFilter === "month"
+      ? stats.monthSpent
+      : spendingFilter === "year"
+        ? stats.yearSpent
+        : stats.totalSpent;
 
   // Recreate tier counts for the UI
   const tierCounts = {
@@ -242,7 +385,7 @@ export default function Index() {
     }
   };
 
-  const customerRows = topCustomers.map((customer: any) => [
+  const todayCompetitorRows = topCompetitorsToday.map((customer: any) => [
     <Text key={`name-${customer.id}`} variant="bodyMd" as="span">
       {customer.name}
     </Text>,
@@ -262,6 +405,7 @@ export default function Index() {
       key={`view-${customer.id}`}
       variant="tertiary"
       icon={<Icon source={ViewIcon} />}
+      onClick={() => handleViewCustomer(customer)}
     >
       View
     </Button>,
@@ -269,6 +413,12 @@ export default function Index() {
 
   return (
     <Page fullWidth>
+      {selectedCustomer && (
+        <CustomerLoyaltyCard
+          customer={selectedCustomer}
+          onClose={handleCloseCustomerCard}
+        />
+      )}
       <BlockStack gap="500">
         <Layout>
           <Layout.Section>
@@ -308,14 +458,49 @@ export default function Index() {
               <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                 <Card>
                   <BlockStack gap="200">
-                    <Text variant="headingSm" as="h3">
-                      Total Spent
-                    </Text>
+                    <InlineStack align="space-between">
+                      <Text variant="headingSm" as="h3">
+                        Total Spent
+                      </Text>
+                      <InlineStack gap="100">
+                        <Button
+                          size="micro"
+                          variant={
+                            spendingFilter === "month" ? "primary" : "tertiary"
+                          }
+                          onClick={() => setSpendingFilter("month")}
+                        >
+                          Month
+                        </Button>
+                        <Button
+                          size="micro"
+                          variant={
+                            spendingFilter === "year" ? "primary" : "tertiary"
+                          }
+                          onClick={() => setSpendingFilter("year")}
+                        >
+                          {stats.currentYear.toString()}
+                        </Button>
+                        <Button
+                          size="micro"
+                          variant={
+                            spendingFilter === "total" ? "primary" : "tertiary"
+                          }
+                          onClick={() => setSpendingFilter("total")}
+                        >
+                          Total
+                        </Button>
+                      </InlineStack>
+                    </InlineStack>
                     <Text variant="headingXl" as="p">
-                      {stats.totalSpent}
+                      ${displayedSpending}
                     </Text>
                     <Text variant="bodySm" as="p">
-                      Across all customers
+                      {spendingFilter === "month"
+                        ? "This month"
+                        : spendingFilter === "year"
+                          ? `Year ${stats.currentYear}`
+                          : "All time"}
                     </Text>
                   </BlockStack>
                 </Card>
@@ -360,13 +545,13 @@ export default function Index() {
                   <BlockStack gap="400">
                     <InlineStack align="space-between">
                       <Text as="h3" variant="headingMd">
-                        Top Customers
+                        Top 5 Competitors Today
                       </Text>
                       <Link to="/app/customers">
                         <Button variant="plain">View all customers</Button>
                       </Link>
                     </InlineStack>
-                    {customerRows.length > 0 ? (
+                    {todayCompetitorRows.length > 0 ? (
                       <DataTable
                         columnContentTypes={[
                           "text",
@@ -378,20 +563,99 @@ export default function Index() {
                         headings={[
                           "Customer",
                           "Tier",
-                          "Total Spent",
+                          "Spent Today",
                           "Orders",
                           "Actions",
                         ]}
-                        rows={customerRows}
+                        rows={todayCompetitorRows}
                       />
                     ) : (
                       <EmptyState
-                        heading="No customers found"
+                        heading="No competitors today"
                         image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                       >
-                        <p>
-                          No customers have joined your loyalty program yet.
-                        </p>
+                        <p>No customers have made purchases today.</p>
+                      </EmptyState>
+                    )}
+                  </BlockStack>
+                </Card>
+              </Grid.Cell>
+            </Grid>
+          </Layout.Section>
+
+          <Layout.Section>
+            <Grid>
+              <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
+                <Card>
+                  <BlockStack gap="400">
+                    <InlineStack align="space-between">
+                      <Text as="h3" variant="headingMd">
+                        Top 5 Competitors This Month
+                      </Text>
+                      <Link to="/app/customers">
+                        <Button variant="plain">View all customers</Button>
+                      </Link>
+                    </InlineStack>
+                    {topCompetitorsMonth.length > 0 ? (
+                      <DataTable
+                        columnContentTypes={[
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                        ]}
+                        headings={[
+                          "Customer",
+                          "Tier",
+                          "Spent This Month",
+                          "Orders",
+                          "Actions",
+                        ]}
+                        rows={topCompetitorsMonth.map((customer: any) => [
+                          <Text
+                            key={`name-${customer.id}`}
+                            variant="bodyMd"
+                            as="span"
+                          >
+                            {customer.name}
+                          </Text>,
+                          <Badge
+                            key={`tier-${customer.id}`}
+                            tone={getTierColor(customer.tier) as any}
+                          >
+                            {customer.tier}
+                          </Badge>,
+                          <Text
+                            key={`spent-${customer.id}`}
+                            variant="bodyMd"
+                            as="span"
+                          >
+                            {customer.spent}
+                          </Text>,
+                          <Text
+                            key={`orders-${customer.id}`}
+                            variant="bodyMd"
+                            as="span"
+                          >
+                            {customer.orders}
+                          </Text>,
+                          <Button
+                            key={`view-${customer.id}`}
+                            variant="tertiary"
+                            icon={<Icon source={ViewIcon} />}
+                            onClick={() => handleViewCustomer(customer)}
+                          >
+                            View
+                          </Button>,
+                        ])}
+                      />
+                    ) : (
+                      <EmptyState
+                        heading="No competitors this month"
+                        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                      >
+                        <p>No customers have made purchases this month.</p>
                       </EmptyState>
                     )}
                   </BlockStack>
