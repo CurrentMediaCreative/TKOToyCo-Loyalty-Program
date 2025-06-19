@@ -60,10 +60,15 @@ model Customer {
   firstName      String?
   lastName       String?
   totalSpend     Float    @default(0)
+  spendPoints    Float    @default(0)
+  bonusPoints    Float    @default(0)
+  totalPoints    Float    @default(0)
   tierId         String?
   tier           Tier?    @relation(fields: [tierId], references: [id])
   metafieldId    String?  @unique
   lastOrderDate  DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([totalPoints])
 }

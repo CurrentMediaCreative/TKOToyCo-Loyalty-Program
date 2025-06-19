@@ -20,6 +20,10 @@ interface CustomerLoyaltyCardProps {
     tier: string;
     spent: string;
     orders: number;
+    // Points-related props
+    spendPoints?: number;
+    bonusPoints?: number;
+    totalPoints?: number;
     // Additional props that will be passed when available
     email?: string;
     phone?: string;
@@ -149,20 +153,20 @@ export function CustomerLoyaltyCard({
                 <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                   <BlockStack gap="200">
                     <Text variant="headingSm" as="h4">
-                      Avg. Monthly Spend
+                      Total Orders
                     </Text>
                     <Text variant="headingMd" as="p">
-                      ${avgMonthlySpend}
+                      {customer.orders}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
                 <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                   <BlockStack gap="200">
                     <Text variant="headingSm" as="h4">
-                      Total Orders
+                      Avg. Monthly Spend
                     </Text>
                     <Text variant="headingMd" as="p">
-                      {customer.orders}
+                      ${avgMonthlySpend}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
@@ -175,6 +179,61 @@ export function CustomerLoyaltyCard({
                       {customer.consistency
                         ? `${customer.consistency}%`
                         : "Active"}
+                    </Text>
+                  </BlockStack>
+                </Grid.Cell>
+              </Grid>
+
+              <Divider />
+
+              <Text variant="headingSm" as="h4">
+                Loyalty Points
+              </Text>
+              <Grid>
+                <Grid.Cell columnSpan={{ xs: 4, sm: 4, md: 4, lg: 4, xl: 4 }}>
+                  <BlockStack gap="200">
+                    <Text variant="bodySm" as="p">
+                      Spend Points
+                    </Text>
+                    <Text variant="headingMd" as="p">
+                      {customer.spendPoints !== undefined
+                        ? customer.spendPoints.toLocaleString()
+                        : customer.totalSpend !== undefined
+                          ? customer.totalSpend.toLocaleString()
+                          : parseFloat(
+                              customer.spent.replace("$", ""),
+                            ).toLocaleString()}
+                    </Text>
+                  </BlockStack>
+                </Grid.Cell>
+                <Grid.Cell columnSpan={{ xs: 4, sm: 4, md: 4, lg: 4, xl: 4 }}>
+                  <BlockStack gap="200">
+                    <Text variant="bodySm" as="p">
+                      Bonus Points
+                    </Text>
+                    <Text variant="headingMd" as="p">
+                      {customer.bonusPoints !== undefined
+                        ? customer.bonusPoints.toLocaleString()
+                        : "0"}
+                    </Text>
+                  </BlockStack>
+                </Grid.Cell>
+                <Grid.Cell columnSpan={{ xs: 4, sm: 4, md: 4, lg: 4, xl: 4 }}>
+                  <BlockStack gap="200">
+                    <Text variant="bodySm" as="p">
+                      Total Points
+                    </Text>
+                    <Text variant="headingMd" as="p" fontWeight="bold">
+                      {customer.totalPoints !== undefined
+                        ? customer.totalPoints.toLocaleString()
+                        : customer.spendPoints !== undefined &&
+                            customer.bonusPoints !== undefined
+                          ? (
+                              customer.spendPoints + customer.bonusPoints
+                            ).toLocaleString()
+                          : parseFloat(
+                              customer.spent.replace("$", ""),
+                            ).toLocaleString()}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>

@@ -50,3 +50,6 @@ temp/
 # Branding assets (to be added separately)
 memory-bank/branding/*
 !memory-bank/branding/.gitkeep
+
+# Archive directory (contains legacy code)
+archive/

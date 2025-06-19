@@ -187,13 +187,15 @@ export default function CustomersPage() {
     setSelectedTab(selectedTabIndex);
   };
 
-  // Function to determine customer tier based on total spent
-  const getCustomerTier = (amountSpent: any) => {
+  // Function to determine customer tier based on total points
+  const getCustomerTier = (amountSpent: any, bonusPoints: number = 0) => {
     const spent = parseFloat(amountSpent?.amount || "0");
-    if (spent >= 100000) return "Reigning Champion"; // Added top tier with high spend threshold
-    if (spent >= 25000) return "Heavyweight";
-    if (spent >= 5000) return "Welterweight";
-    if (spent >= 1500) return "Lightweight";
+    const totalPoints = spent + bonusPoints; // $1 = 1 point, plus any bonus points
+
+    if (totalPoints >= 100000) return "Reigning Champion";
+    if (totalPoints >= 25000) return "Heavyweight";
+    if (totalPoints >= 5000) return "Welterweight";
+    if (totalPoints >= 1500) return "Lightweight";
     return "Featherweight";
   };
 
@@ -241,15 +243,23 @@ export default function CustomersPage() {
   // Filter customers by search term and selected tab
   const filteredCustomers = customers
     .map((customer: any) => {
-      // Add tier to each customer object
+      // Calculate points
+      const spentAmount = parseFloat(customer.amountSpent?.amount || "0");
+      const bonusPoints = 0; // We'll get this from the database in the future
+      const totalPoints = spentAmount + bonusPoints;
+
+      // Add tier and points to each customer object
       return {
         ...customer,
-        tier: getCustomerTier(customer.amountSpent),
+        tier: getCustomerTier(customer.amountSpent, bonusPoints),
         name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
         location: customer.defaultAddress
           ? `${customer.defaultAddress.city || ""}, ${customer.defaultAddress.province || ""} ${customer.defaultAddress.country || ""}`
           : "No address",
-        spentAmount: parseFloat(customer.amountSpent?.amount || "0"),
+        spentAmount: spentAmount,
+        spendPoints: spentAmount,
+        bonusPoints: bonusPoints,
+        totalPoints: totalPoints,
       };
     })
     .filter((customer: any) => {
@@ -295,6 +305,10 @@ export default function CustomersPage() {
             };
             valueA = tierOrder[a.tier as string] || 0;
             valueB = tierOrder[b.tier as string] || 0;
+            break;
+          case "points":
+            valueA = a.totalPoints || 0;
+            valueB = b.totalPoints || 0;
             break;
           case "spent":
             valueA = a.spentAmount;
@@ -364,6 +378,9 @@ export default function CustomersPage() {
           <Badge tone={getTierColor(customer.tier) as any}>
             {customer.tier}
           </Badge>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {customer.totalPoints.toLocaleString()}
         </IndexTable.Cell>
         <IndexTable.Cell>${customer.spentAmount.toFixed(2)}</IndexTable.Cell>
         <IndexTable.Cell>{customer.numberOfOrders || 0}</IndexTable.Cell>
@@ -455,11 +472,12 @@ export default function CustomersPage() {
                 { title: `Name${getSortIndicator("name")}` },
                 { title: `Email${getSortIndicator("email")}` },
                 { title: `Tier${getSortIndicator("tier")}` },
-                { title: `Total spent${getSortIndicator("spent")}` },
+                { title: `Total Points${getSortIndicator("points")}` },
+                { title: `Total Spent${getSortIndicator("spent")}` },
                 { title: `Orders${getSortIndicator("orders")}` },
                 { title: `Location${getSortIndicator("location")}` },
               ]}
-              sortable={[true, true, true, true, true, true]}
+              sortable={[true, true, true, true, true, true, true]}
               sortDirection={sortDirection}
               sortColumnIndex={
                 sortField === "name"
@@ -468,13 +486,15 @@ export default function CustomersPage() {
                     ? 1
                     : sortField === "tier"
                       ? 2
-                      : sortField === "spent"
+                      : sortField === "points"
                         ? 3
-                        : sortField === "orders"
+                        : sortField === "spent"
                           ? 4
-                          : sortField === "location"
+                          : sortField === "orders"
                             ? 5
-                            : 0
+                            : sortField === "location"
+                              ? 6
+                              : 0
               }
               onSort={(index) => {
                 const field =
@@ -485,12 +505,14 @@ export default function CustomersPage() {
                       : index === 2
                         ? "tier"
                         : index === 3
-                          ? "spent"
+                          ? "points"
                           : index === 4
-                            ? "orders"
+                            ? "spent"
                             : index === 5
-                              ? "location"
-                              : "name";
+                              ? "orders"
+                              : index === 6
+                                ? "location"
+                                : "name";
                 handleSort(field);
               }}
               emptyState={emptyStateMarkup}

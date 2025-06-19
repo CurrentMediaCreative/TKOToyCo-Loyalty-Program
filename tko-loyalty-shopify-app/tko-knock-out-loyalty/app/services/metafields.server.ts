@@ -10,6 +10,9 @@ export const METAFIELD_KEYS = {
   TIER_NAME: "tier_name",
   TIER_LEVEL: "tier_level",
   TOTAL_SPEND: "total_spend",
+  SPEND_POINTS: "spend_points",
+  BONUS_POINTS: "bonus_points",
+  TOTAL_POINTS: "total_points",
   TIER_BENEFITS: "tier_benefits",
 };
 
@@ -34,6 +37,9 @@ function getTierLevel(tierName: string): number {
  * @param shopifyCustomerId - Shopify customer ID (gid format or numeric)
  * @param tierId - Tier ID from our database
  * @param totalSpend - Customer's total spend amount
+ * @param spendPoints - Points earned from spending
+ * @param bonusPoints - Bonus points awarded
+ * @param totalPoints - Total points (spend + bonus)
  * @returns Result of the metafield update operation
  */
 export async function updateCustomerTierMetafields(
@@ -41,6 +47,9 @@ export async function updateCustomerTierMetafields(
   shopifyCustomerId: string | number,
   tierId: string,
   totalSpend: number,
+  spendPoints: number = totalSpend, // Default to totalSpend if not provided
+  bonusPoints: number = 0,
+  totalPoints: number = spendPoints + bonusPoints, // Default to sum if not provided
 ) {
   try {
     // Get tier details from our database
@@ -102,6 +111,27 @@ export async function updateCustomerTierMetafields(
               key: METAFIELD_KEYS.TOTAL_SPEND,
               type: "number_decimal",
               value: totalSpend.toString(),
+            },
+            {
+              ownerId: customerGid,
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEYS.SPEND_POINTS,
+              type: "number_decimal",
+              value: spendPoints.toString(),
+            },
+            {
+              ownerId: customerGid,
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEYS.BONUS_POINTS,
+              type: "number_decimal",
+              value: bonusPoints.toString(),
+            },
+            {
+              ownerId: customerGid,
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEYS.TOTAL_POINTS,
+              type: "number_decimal",
+              value: totalPoints.toString(),
             },
             {
               ownerId: customerGid,
@@ -263,6 +293,11 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
           );
           const totalSpend = parseFloat(customer.amountSpent?.amount || "0");
 
+          // Calculate points from spend (1:1 ratio)
+          const spendPoints = totalSpend;
+          const bonusPoints = 0; // Default to 0 for bulk updates
+          const totalPoints = spendPoints; // No bonus points in bulk update
+
           // Create metafields using the Shopify Admin API
           const response = await admin.graphql(
             `#graphql
@@ -303,6 +338,27 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
                     key: METAFIELD_KEYS.TOTAL_SPEND,
                     type: "number_decimal",
                     value: totalSpend.toString(),
+                  },
+                  {
+                    ownerId: customerId,
+                    namespace: METAFIELD_NAMESPACE,
+                    key: METAFIELD_KEYS.SPEND_POINTS,
+                    type: "number_decimal",
+                    value: spendPoints.toString(),
+                  },
+                  {
+                    ownerId: customerId,
+                    namespace: METAFIELD_NAMESPACE,
+                    key: METAFIELD_KEYS.BONUS_POINTS,
+                    type: "number_decimal",
+                    value: bonusPoints.toString(),
+                  },
+                  {
+                    ownerId: customerId,
+                    namespace: METAFIELD_NAMESPACE,
+                    key: METAFIELD_KEYS.TOTAL_POINTS,
+                    type: "number_decimal",
+                    value: totalPoints.toString(),
                   },
                   {
                     ownerId: customerId,
