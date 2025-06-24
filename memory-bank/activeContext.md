@@ -14,7 +14,7 @@ The project follows strict context management rules defined in `.clinerules`:
 
 ## Current Work Focus
 
-We are currently implementing a points-based loyalty system for the TKO Toy Co Loyalty Program Shopify app. The app has been fully implemented as a Shopify integration, and we are now enhancing it to support a more flexible points-based approach rather than the current direct spend-based tier system.
+We are implementing a points-based loyalty system for the TKO Toy Co Loyalty Program Shopify app. The app has been fully implemented as a Shopify integration, and we have made significant progress in transitioning from a spend-based to a points-based loyalty system.
 
 ### Recently Completed
 
@@ -43,6 +43,7 @@ We are currently implementing a points-based loyalty system for the TKO Toy Co L
    - Set up relationships between entities
 
 4. **Deployment Configuration**:
+
    - Resolved deployment issues with Render.com
    - Updated database configuration to use PostgreSQL instead of SQLite
    - Fixed URL configuration issues in vite.config.ts
@@ -55,59 +56,68 @@ We are currently implementing a points-based loyalty system for the TKO Toy Co L
      - Added adminApiAccessToken parameter to shopifyApp configuration
      - Added SHOPIFY_ADMIN_API_ACCESS_TOKEN environment variable on Render.com
 
+5. **Points-Based System Implementation (Partial)**:
+
+   - Updated database schema with new fields for points system:
+     - `spendPoints`: Points earned from purchases (1:1 with dollars)
+     - `bonusPoints`: Points earned from events, promotions, etc.
+     - `totalPoints`: Sum of both point sources (used for tier calculation)
+   - Created database migration for points system
+   - Updated customer service to handle points calculation
+   - Modified customer list view to display total points
+   - Updated customer loyalty card component to show points information
+
+6. **Point Events System Implementation (Partial)**:
+   - Created the PointEvent model in the schema with necessary fields
+   - Set up the basic service file for point events (pointEvent.server.ts)
+   - Added database migration for point events
+   - Defined the point event types and structure
+   - Prepared the foundation for event-based bonus points
+
 ### Current Focus
 
-1. **Points-Based System Implementation**:
+1. **Points-Based System Completion**:
 
-   - Transitioning from direct spend-based tier calculation to points-based system
-   - Maintaining 1:1 conversion from dollars to points for spending
-   - Adding support for additional points from events and promotions
-   - Implementing point tracking and history
-   - Creating annual reset mechanism (starting in 2026)
+   - Updating tier display to show point thresholds instead of spend thresholds
+   - Ensuring bonus points are properly displayed in the customer table
+   - Adding Shopify profile integration for customer details
+   - Creating data export functionality for customer points data
 
-2. **Database Schema Updates**:
+2. **Point Events System**:
 
-   - Adding new fields to customer model:
-     - `pointsFromSpend`: Points earned from purchases (1:1 with dollars)
-     - `additionalPoints`: Points earned from events, promotions, etc.
-     - `totalPoints`: Sum of both point sources (used for tier calculation)
-     - `pointsYear`: Year these points were earned (for annual reset)
+   - Implementing the admin interface for point events management
+   - Integrating with checkout process to apply bonus points automatically
+   - Building event performance metrics and reporting
+   - Creating event filtering and search functionality
 
-3. **Point Events System**:
-
-   - Creating a new "Point Events" feature for time-limited promotions
-   - Implementing date-based event scheduling
-   - Adding percentage-based point bonuses
-   - Building admin interface for event management
-
-4. **Service Layer Updates**:
-   - Updating tier calculation to use total points instead of total spend
-   - Implementing point calculation logic
+3. **Service Layer Updates**:
+   - Enhancing point calculation logic
    - Creating methods for managing bonus points
    - Building point history tracking
+   - Implementing point transaction records
 
 ## Recent Changes
 
-1. **Shopify App Completion**:
+1. **Points System Implementation**:
 
-   - Fully transitioned from standalone/desktop app concept to Shopify app
-   - Implemented core Shopify app functionality
-   - Set up customer management and tier assignment
-   - Deployed app to Render.com
-   - Connected app to Shopify store
+   - Added `spendPoints`, `bonusPoints`, and `totalPoints` fields to Customer model
+   - Created database migration for points system
+   - Updated customer service to handle points calculation
+   - Modified customer list view to display total points
+   - Updated customer loyalty card component to show points information
 
-2. **Customer Management Implementation**:
+2. **Customer Management Enhancement**:
 
-   - Created comprehensive customer listing with filtering and sorting
-   - Implemented customer detail view with loyalty information
-   - Added tier assignment and management
-   - Set up customer data synchronization with Shopify
+   - Updated customer listing to show points information
+   - Enhanced customer detail view with loyalty point breakdown
+   - Modified tier assignment to use points instead of direct spend
+   - Updated customer data synchronization to include points
 
 3. **Tier Management Implementation**:
 
    - Created tier configuration interface
    - Implemented tier benefit management
-   - Set up automatic tier assignment based on spending
+   - Set up automatic tier assignment based on points
    - Added manual tier override capabilities
 
 4. **Metafields Integration**:
@@ -115,71 +125,112 @@ We are currently implementing a points-based loyalty system for the TKO Toy Co L
    - Created metafield definitions for tier information
    - Set up metafield synchronization
    - Added bulk update capabilities for metafields
+   - Updated metafields to include points information
 
 ## Active Decisions and Considerations
 
 1. **Points System Design**:
 
-   - Using dual-category point system (spend points and additional points)
+   - Using dual-category point system (spend points and bonus points)
    - Implementing 1:1 conversion from dollars to points
    - Planning for annual reset starting in 2026
    - Designing point events system for promotional bonuses
+   - Ensuring clear display of both point categories in UI
 
-2. **Shopify Integration Approach**:
+2. **Point Events System Design**:
+
+   - Creating time-based promotional events with performance tracking
+   - Supporting both store-wide and product-specific events
+   - Implementing percentage-based bonus point calculation
+   - Creating a PointTransaction model for simplified point history tracking
+   - Implementing reporting for points earned during specific events
+   - Integrating with checkout process via webhook handler
+   - Building admin interface with performance metrics and filtering
+
+3. **Shopify Integration Approach**:
 
    - Leveraging Shopify Admin API for data access
    - Using Shopify Webhooks for real-time updates
    - Storing loyalty data in both app database and Shopify metafields
    - Using Shopify App Bridge for seamless admin UI integration
+   - Adding direct links to Shopify customer profiles
 
-3. **Database Design**:
+4. **Data Export Functionality**:
 
-   - Using Prisma ORM for database access
-   - Implementing proper relationships between entities
-   - Planning for point transaction history
-   - Designing for efficient querying and reporting
+   - Implementing date range filtering for exports
+   - Supporting Excel/CSV export formats
+   - Including comprehensive points data in exports
+   - Designing for efficient data retrieval
 
-4. **UI/UX Considerations**:
+5. **UI/UX Considerations**:
    - Using Shopify Polaris components for consistent admin experience
    - Implementing clear point breakdown display
    - Designing intuitive point events management interface
    - Creating visual indicators for tier progress based on points
+   - Ensuring clear distinction between spend points and bonus points
 
 ## Next Steps
 
-1. **Points System Implementation**:
+1. **Points System Completion**:
 
-   - Update database schema to add point-related fields
-   - Modify customer service to calculate and track points
-   - Update metafields service to store points information in Shopify
-   - Update UI components to display points information
+   - Update tier display to show point thresholds instead of spend thresholds
+   - Ensure bonus points are properly displayed in the customer table
+   - Add Shopify profile integration for customer details
+   - Update metafields to include additional points information
 
-2. **Point Events System**:
+2. **Point Events System Implementation**:
 
-   - Create database schema for point events
-   - Implement event management service
-   - Build admin interface for creating and managing events
-   - Implement point calculation logic for events
+   - Add performance tracking fields to PointEvent model:
+     - usageCount
+     - pointsAwarded
+     - lastUsed
+   - Create PointTransaction model for tracking point history with fields for:
+     - Customer ID
+     - Transaction type (spend points, bonus points)
+     - Amount
+     - Source (order ID, event ID)
+     - Timestamp
+   - Enhance pointEvent.server.ts service to:
+     - Track usage statistics when events are applied
+     - Calculate potential bonus points for a cart
+   - Create pointTransaction.server.ts service for:
+     - Recording point transactions
+     - Retrieving transaction history for a customer
+   - Create webhook handler for "orders/create" to apply points after purchase
+   - Update events management UI with:
+     - Performance metrics for each event
+     - Total points awarded and usage count
+     - Filtering by active/inactive/upcoming events
+   - Implement reporting for points earned during specific events
 
-3. **Annual Reset Mechanism**:
+3. **Data Export Functionality**:
+
+   - Create new route for data exports
+   - Implement date range filtering
+   - Build UI for export configuration
+   - Implement Excel/CSV export generation
+   - Include comprehensive points data in exports
+
+4. **Annual Reset Mechanism**:
 
    - Design data structure for historical point tracking
-   - Implement scheduled task for annual reset
+   - Implement scheduled task for annual reset (starting 2026)
    - Create point transaction records for resets
    - Build reporting for historical point data
 
-4. **Admin Interface Updates**:
+5. **Tier Benefits Automation**:
 
-   - Update customer display to show point breakdown
-   - Create point history/transactions view
-   - Implement manual point adjustment interface
-   - Build point events management UI
+   - Implement automatic discount application based on tier
+   - Create checkout integration for tier benefits
+   - Build admin interface for managing tier-based discounts
+   - Implement tracking for benefit usage
 
-5. **Testing and Validation**:
+6. **Testing and Validation**:
    - Test point calculation accuracy
    - Validate tier assignment based on points
    - Test point events functionality
-   - Verify annual reset mechanism
+   - Verify data export functionality
+   - Test Shopify profile integration
 
 ## Important Patterns and Preferences
 

@@ -258,7 +258,7 @@ export default function TiersPage() {
     <Text key={`threshold-${tier.id}`} variant="bodyMd" as="span">
       {tier.name === "Reigning Champion" || tier.spendThreshold >= 9999999
         ? "Invite Only"
-        : `$${tier.spendThreshold.toLocaleString()}`}
+        : `${tier.spendThreshold.toLocaleString()} points`}
     </Text>,
     <div key={`benefits-${tier.id}`}>
       {tier.benefits.map((benefit, index) => (
@@ -304,13 +304,13 @@ export default function TiersPage() {
                 </Text>
                 <Text as="p" variant="bodyMd">
                   Configure your loyalty program tiers. Customers will be
-                  automatically assigned to tiers based on their total spend.
+                  automatically assigned to tiers based on their total points.
                 </Text>
                 <DataTable
                   columnContentTypes={["text", "text", "text", "text", "text"]}
                   headings={[
                     "Tier Name",
-                    "Spend Threshold",
+                    "Points Threshold",
                     "Benefits",
                     "Color",
                     "Actions",
@@ -362,11 +362,11 @@ export default function TiersPage() {
                             "Invite Only"
                           ) : (
                             <>
-                              ${tier.spendThreshold.toLocaleString()}
+                              {tier.spendThreshold.toLocaleString()} points
                               {index < tiers.length - 1 &&
                               tiers[index + 1].spendThreshold !== null &&
                               tiers[index + 1].spendThreshold < 9999999
-                                ? ` - $${(Number(tiers[index + 1].spendThreshold) - 0.01).toLocaleString()}`
+                                ? ` - ${(Number(tiers[index + 1].spendThreshold) - 0.01).toLocaleString()} points`
                                 : "+"}
                             </>
                           )}
@@ -427,11 +427,10 @@ export default function TiersPage() {
               {editingTier.name === "Reigning Champion" ? (
                 <BlockStack gap="200">
                   <Text variant="bodyMd" as="p">
-                    This tier is invite-only and not based on spending
-                    threshold.
+                    This tier is invite-only and not based on points threshold.
                   </Text>
                   <TextField
-                    label="Spend Threshold"
+                    label="Points Threshold"
                     value="Invite Only"
                     disabled
                     autoComplete="off"
@@ -439,7 +438,7 @@ export default function TiersPage() {
                 </BlockStack>
               ) : (
                 <TextField
-                  label="Spend Threshold"
+                  label="Points Threshold"
                   value={editingTier.spendThreshold.toString()}
                   onChange={(value) =>
                     setEditingTier({
@@ -447,7 +446,6 @@ export default function TiersPage() {
                       spendThreshold: parseInt(value) || 0,
                     })
                   }
-                  prefix="$"
                   type="number"
                   autoComplete="off"
                 />

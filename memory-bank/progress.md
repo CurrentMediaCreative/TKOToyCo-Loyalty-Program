@@ -106,26 +106,36 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 
 ### 6. Points-Based System Implementation
 
-- [ ] Database Schema Updates
+- [x] Database Schema Updates
 
-  - [ ] Add point-related fields to customer model
-  - [ ] Create point events table
+  - [x] Add point-related fields to customer model
+    - Added `spendPoints` field for points from purchases (1:1 with dollars)
+    - Added `bonusPoints` field for points from events and promotions
+    - Added `totalPoints` field for sum of both point sources
+
+- [x] Create point events table
+
   - [ ] Implement point transactions table
-  - [ ] Set up relationships between entities
+  - [x] Set up relationships between entities
 
-- [ ] Service Layer Updates
+- [x] Service Layer Updates
 
-  - [ ] Update tier calculation to use points instead of spend
-  - [ ] Implement point calculation logic
-  - [ ] Create methods for managing bonus points
+  - [x] Update tier calculation to use points instead of spend
+  - [x] Implement point calculation logic
+  - [x] Create methods for managing bonus points
   - [ ] Build point history tracking
 
 - [ ] Point Events System
 
-  - [ ] Create event management service
-  - [ ] Implement date-based event scheduling
-  - [ ] Add percentage-based point bonuses
-  - [ ] Build admin interface for event management
+  - [x] Created the PointEvent model in the schema with necessary fields
+  - [x] Set up the basic service file for point events (pointEvent.server.ts)
+  - [ ] Add performance tracking fields to PointEvent model (usageCount, pointsAwarded, lastUsed)
+  - [ ] Create PointTransaction model for tracking point history
+  - [ ] Enhance pointEvent.server.ts to track usage statistics and calculate potential bonus points
+  - [ ] Create pointTransaction.server.ts service for recording and retrieving transactions
+  - [ ] Create webhook handler for "orders/create" to apply points after purchase
+  - [ ] Update events management UI with performance metrics and filtering
+  - [ ] Implement reporting for points earned during specific events
 
 - [ ] Annual Reset Mechanism
   - [ ] Design data structure for historical point tracking
@@ -137,9 +147,9 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 
 ### 7. Admin Interface Updates for Points System
 
-- [ ] Customer Display Updates
+- [x] Customer Display Updates
 
-  - [ ] Update customer display to show point breakdown
+  - [x] Update customer display to show point breakdown
   - [ ] Create point history/transactions view
   - [ ] Implement manual point adjustment interface
   - [ ] Update tier progress visualization to use points
@@ -147,9 +157,21 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 - [ ] Point Events Management UI
 
   - [ ] Create point events listing page
-  - [ ] Implement event creation/editing form
+  - [ ] Implement event creation/editing form with:
+    - Start and end date/time selection
+    - Event type selection (store-wide or product-specific)
+    - Product selection for product-specific events
+    - Bonus percentage configuration
+    - Event name and description fields
   - [ ] Build calendar view for event scheduling
   - [ ] Add event performance metrics
+
+- [x] Data Export Functionality
+
+  - [x] Create data export interface with date range filtering
+  - [x] Implement Excel/CSV export generation
+  - [x] Include comprehensive points data in exports
+  - [ ] Add export history tracking
 
 - [ ] Reports and Analytics
   - [ ] Create point distribution reports
@@ -167,10 +189,10 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
   - [ ] Create point transaction records
 
 - [ ] Customer Data Integration
-  - [ ] Update customer metafields for points
+  - [x] Update customer metafields for points
   - [ ] Implement customer tagging for point milestones
-  - [ ] Sync point data between app and Shopify
-  - [ ] Add point data to customer exports
+  - [x] Sync point data between app and Shopify
+  - [ ] Add Shopify profile integration for customer details
 
 ### 9. Testing and Deployment
 
@@ -202,17 +224,21 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
    - ✓ Fixed: Authentication flow for admin access
    - ✓ Fixed: URL configuration for Render.com deployment
 
-2. Simplified Transaction Approach:
+2. Points System Implementation:
 
-   - Updated approach to focus on pulling total spend amounts from Shopify
-   - Using total spend data only for tier assignment
-   - Need to adapt this approach for points-based system
+   - Tier display still shows spend threshold instead of points threshold
+   - Bonus points section not clearly visible in customer table
+   - Missing point event creation functionality
+   - No direct link to Shopify customer profiles
+   - No data export functionality for customer points
 
 3. Current System Limitations:
-   - System is currently tied to total spend for tier assignment
-   - No support for additional points from events or promotions
+   - ✓ Partially Fixed: System now uses points for tier assignment
+   - ✓ Partially Fixed: Database schema updated for points tracking
+   - No point events system for promotional bonuses
    - No point history tracking
    - No annual reset mechanism
+   - No data export functionality
 
 ## Technical Debt
 
@@ -220,40 +246,56 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 2. Should optimize database queries for performance with points data
 3. Need to add proper error handling for point calculations
 4. Should implement better logging for point transactions
-5. Need to create data migration strategy for transitioning to points system
+5. ✓ Completed: Created data migration for transitioning to points system
+6. Need to implement proper validation for point events
+7. Should add comprehensive error handling for data exports
 
 ## Next Steps
 
-1. Points System Implementation:
+1. Points System Completion:
 
-   - Update database schema to add point-related fields
-   - Modify customer service to calculate and track points
-   - Update metafields service to store points information in Shopify
-   - Update UI components to display points information
+   - Update tier display to show point thresholds instead of spend thresholds
+   - Ensure bonus points are properly displayed in the customer table
+   - Add Shopify profile integration for customer details
+   - Update metafields to include additional points information
 
-2. Point Events System:
+2. Point Events System Implementation:
 
-   - Create database schema for point events
+   - Create database schema for point events with:
+     - Start and end date/time
+     - Event type (store-wide or product-specific)
+     - Product IDs for product-specific events
+     - Bonus percentage
+     - Event name and description
    - Implement event management service
    - Build admin interface for creating and managing events
-   - Implement point calculation logic for events
+   - Integrate with checkout process to apply bonus points
 
-3. Annual Reset Mechanism:
+3. Data Export Functionality:
+
+   - Create new route for data exports
+   - Implement date range filtering
+   - Build UI for export configuration
+   - Implement Excel/CSV export generation
+   - Include comprehensive points data in exports
+
+4. Annual Reset Mechanism:
 
    - Design data structure for historical point tracking
    - Implement scheduled task for annual reset (starting 2026)
    - Create point transaction records for resets
    - Build reporting for historical point data
 
-4. Admin Interface Updates:
+5. Tier Benefits Automation:
 
-   - Update customer display to show point breakdown
-   - Create point history/transactions view
-   - Implement manual point adjustment interface
-   - Build point events management UI
+   - Implement automatic discount application based on tier
+   - Create checkout integration for tier benefits
+   - Build admin interface for managing tier-based discounts
+   - Implement tracking for benefit usage
 
-5. Testing and Validation:
+6. Testing and Validation:
    - Test point calculation accuracy
    - Validate tier assignment based on points
    - Test point events functionality
-   - Verify annual reset mechanism
+   - Verify data export functionality
+   - Test Shopify profile integration
