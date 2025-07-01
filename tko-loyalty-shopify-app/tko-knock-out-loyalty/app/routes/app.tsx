@@ -29,6 +29,7 @@ export default function App() {
         <Link to="/app/rewards">Rewards</Link>
         <Link to="/app/events">Bonus Events</Link>
         <Link to="/app/reports">Reports & Exports</Link>
+        <Link to="/app/product-analysis">Product Analysis</Link>
         <Link to="/app/metafields">Sync Metafields</Link>
       </NavMenu>
       <Outlet />

@@ -100,12 +100,12 @@ export async function createOrUpdateCustomer({
   let tierId = null;
   if (calculatedTotalPoints !== undefined) {
     const tiers = await getTiers();
-    // Sort tiers by minSpend in ascending order (we'll use the same thresholds for points)
-    const sortedTiers = tiers.sort((a, b) => a.minSpend - b.minSpend);
+    // Sort tiers by minPoints in ascending order
+    const sortedTiers = tiers.sort((a: any, b: any) => a.minPoints - b.minPoints);
 
     // Find the highest tier that the customer qualifies for
     for (let i = sortedTiers.length - 1; i >= 0; i--) {
-      if (calculatedTotalPoints >= sortedTiers[i].minSpend) {
+      if (calculatedTotalPoints >= sortedTiers[i].minPoints) {
         tierId = sortedTiers[i].id;
         break;
       }
@@ -238,12 +238,12 @@ export async function updateCustomerBonusPoints(
   // Find the appropriate tier based on total points
   let tierId = existingCustomer.tierId;
   const tiers = await getTiers();
-  // Sort tiers by minSpend in ascending order
-  const sortedTiers = tiers.sort((a, b) => a.minSpend - b.minSpend);
+  // Sort tiers by minPoints in ascending order
+  const sortedTiers = tiers.sort((a: any, b: any) => a.minPoints - b.minPoints);
 
   // Find the highest tier that the customer qualifies for
   for (let i = sortedTiers.length - 1; i >= 0; i--) {
-    if (totalPoints >= sortedTiers[i].minSpend) {
+    if (totalPoints >= sortedTiers[i].minPoints) {
       tierId = sortedTiers[i].id;
       break;
     }

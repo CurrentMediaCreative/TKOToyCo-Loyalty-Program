@@ -6,13 +6,12 @@ import {
   ScrollRestoration,
   LiveReload,
 } from "@remix-run/react";
-import { useNonce } from "@shopify/hydrogen";
 import { addDocumentResponseHeaders } from "./shopify.server";
 
 // Create a Document component that includes the DOCTYPE
 function Document({ children }: { children: React.ReactNode }) {
-  // Get a nonce for script security
-  const nonce = useNonce();
+  // Generate a nonce for script security (simple implementation)
+  const nonce = typeof window !== "undefined" ? undefined : Math.random().toString(36).substring(2);
 
   return (
     <html lang="en">

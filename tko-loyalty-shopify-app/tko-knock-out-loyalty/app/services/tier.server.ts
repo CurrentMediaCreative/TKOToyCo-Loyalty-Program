@@ -6,7 +6,7 @@ export async function getTiers() {
       benefits: true,
     },
     orderBy: {
-      minSpend: "asc",
+      minPoints: "asc",
     },
   });
 }
@@ -23,20 +23,20 @@ export async function getTierById(id: string) {
 export async function createTier({
   name,
   description,
-  minSpend,
-  maxSpend,
+  minPoints,
+  maxPoints,
 }: {
   name: string;
   description?: string;
-  minSpend: number;
-  maxSpend?: number;
+  minPoints: number;
+  maxPoints?: number;
 }) {
   return prisma.tier.create({
     data: {
       name,
       description,
-      minSpend,
-      maxSpend,
+      minPoints,
+      maxPoints,
     },
   });
 }
@@ -45,22 +45,22 @@ export async function updateTier({
   id,
   name,
   description,
-  minSpend,
-  maxSpend,
+  minPoints,
+  maxPoints,
 }: {
   id: string;
   name?: string;
   description?: string | null;
-  minSpend?: number;
-  maxSpend?: number | null;
+  minPoints?: number;
+  maxPoints?: number | null;
 }) {
   return prisma.tier.update({
     where: { id },
     data: {
       name,
       description,
-      minSpend,
-      maxSpend,
+      minPoints,
+      maxPoints,
     },
   });
 }
