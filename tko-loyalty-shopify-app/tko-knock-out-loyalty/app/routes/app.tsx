@@ -20,18 +20,19 @@ export default function App() {
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
-      <NavMenu>
-        <Link to="/app" rel="home">
-          Home
-        </Link>
-        <Link to="/app/customers">Customers</Link>
-        <Link to="/app/tiers">Loyalty Tiers</Link>
-        <Link to="/app/rewards">Rewards</Link>
-        <Link to="/app/events">Bonus Events</Link>
-        <Link to="/app/reports">Reports & Exports</Link>
-        <Link to="/app/product-analysis">Product Analysis</Link>
-        <Link to="/app/metafields">Sync Metafields</Link>
-      </NavMenu>
+        <NavMenu>
+          <Link to="/app" rel="home">
+            Home
+          </Link>
+          <Link to="/app/customers">Customers</Link>
+          <Link to="/app/tiers">Tiers</Link>
+          <Link to="/app/rewards">Rewards</Link>
+          <Link to="/app/events">Point Events</Link>
+          <Link to="/app/points-calculator">Points Calculator</Link>
+          <Link to="/app/product-analysis">Product Analysis</Link>
+          <Link to="/app/reports">Reports</Link>
+          <Link to="/app/additional">Additional</Link>
+        </NavMenu>
       <Outlet />
     </AppProvider>
   );
