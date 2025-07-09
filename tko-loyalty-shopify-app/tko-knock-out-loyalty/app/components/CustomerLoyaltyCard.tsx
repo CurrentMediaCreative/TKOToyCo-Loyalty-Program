@@ -285,7 +285,7 @@ export function CustomerLoyaltyCard({
                 <Button
                   variant="primary"
                   icon={<Icon source={ExternalIcon} />}
-                  url={`https://admin.shopify.com/store/tko-toy-co/customers/${customer.id}`}
+                  url={`https://admin.shopify.com/store/82cc2c/customers/${customer.id}`}
                   target="_blank"
                 >
                   View in Shopify Admin

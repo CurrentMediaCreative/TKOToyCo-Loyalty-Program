@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, Suspense } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit } from "@remix-run/react";
+import { json, defer } from "@remix-run/node";
+import { useLoaderData, useSubmit, Await } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -73,11 +73,54 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+// Fast function to get first page of top spenders
+async function getTopSpenders(admin: any) {
+  try {
+    const response: any = await admin.graphql(
+      `#graphql
+        query GetTopSpenders {
+          customers(first: 50, sortKey: TOTAL_SPENT, reverse: true) {
+            edges {
+              node {
+                id
+                firstName
+                lastName
+                email
+                phone
+                numberOfOrders
+                amountSpent {
+                  amount
+                }
+                tags
+                createdAt
+                defaultAddress {
+                  city
+                  province
+                  country
+                }
+              }
+            }
+          }
+        }`,
+    );
 
-  // Function to fetch all customers using cursor-based pagination
-  async function fetchAllCustomers() {
+    const responseJson: any = await response.json();
+    const customersData: any = responseJson.data?.customers;
+
+    if (!customersData) {
+      throw new Error("No customer data returned from API");
+    }
+
+    return customersData.edges.map((edge: any) => edge.node);
+  } catch (error) {
+    console.error("Error fetching top spenders:", error);
+    return [];
+  }
+}
+
+// Slow function to get all customers (runs in background)
+async function getAllCustomers(admin: any) {
+  try {
     let allCustomers: any[] = [];
     let hasNextPage = true;
     let cursor: string | null = null;
@@ -85,102 +128,110 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const MAX_PAGES = 20; // Safety limit to prevent infinite loops
     const PER_PAGE = 250; // Maximum allowed by Shopify
 
-    try {
-      while (hasNextPage && pageCount < MAX_PAGES) {
-        // Build the query with or without cursor
-        const queryVariables: { first: number; after?: string } = cursor
-          ? { first: PER_PAGE, after: cursor }
-          : { first: PER_PAGE };
+    while (hasNextPage && pageCount < MAX_PAGES) {
+      // Build the query with or without cursor
+      const queryVariables: { first: number; after?: string } = cursor
+        ? { first: PER_PAGE, after: cursor }
+        : { first: PER_PAGE };
 
-        const response: any = await admin.graphql(
-          `#graphql
-            query GetCustomers($first: Int!, $after: String) {
-              customers(first: $first, after: $after) {
-                edges {
-                  node {
-                    id
-                    firstName
-                    lastName
-                    email
-                    phone
-                    numberOfOrders
-                    amountSpent {
-                      amount
-                    }
-                    tags
-                    createdAt
-                    defaultAddress {
-                      city
-                      province
-                      country
-                    }
+      const response: any = await admin.graphql(
+        `#graphql
+          query GetCustomers($first: Int!, $after: String) {
+            customers(first: $first, after: $after) {
+              edges {
+                node {
+                  id
+                  firstName
+                  lastName
+                  email
+                  phone
+                  numberOfOrders
+                  amountSpent {
+                    amount
                   }
-                  cursor
+                  tags
+                  createdAt
+                  defaultAddress {
+                    city
+                    province
+                    country
+                  }
                 }
-                pageInfo {
-                  hasNextPage
-                  endCursor
-                }
+                cursor
               }
-            }`,
-          { variables: queryVariables },
-        );
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+            }
+          }`,
+        { variables: queryVariables },
+      );
 
-        const responseJson: any = await response.json();
-        const customersData: any = responseJson.data?.customers;
+      const responseJson: any = await response.json();
+      const customersData: any = responseJson.data?.customers;
 
-        if (!customersData) {
-          console.error("No customer data returned from API");
-          break;
-        }
-
-        // Extract customers from this page
-        const pageCustomers = customersData.edges.map((edge: any) => edge.node);
-        allCustomers = [...allCustomers, ...pageCustomers];
-
-        // Update pagination info for next iteration
-        hasNextPage = customersData.pageInfo.hasNextPage;
-        cursor = customersData.pageInfo.endCursor;
-        pageCount++;
-
-        console.log(
-          `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
-        );
+      if (!customersData) {
+        console.error("No customer data returned from API");
+        break;
       }
 
-      return allCustomers;
-    } catch (error) {
-      console.error("Error fetching customers:", error);
-      throw error;
+      // Extract customers from this page
+      const pageCustomers = customersData.edges.map((edge: any) => edge.node);
+      allCustomers = [...allCustomers, ...pageCustomers];
+
+      // Update pagination info for next iteration
+      hasNextPage = customersData.pageInfo.hasNextPage;
+      cursor = customersData.pageInfo.endCursor;
+      pageCount++;
+
+      console.log(
+        `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
+      );
     }
+
+    return allCustomers;
+  } catch (error) {
+    console.error("Error fetching all customers:", error);
+    throw error;
   }
+}
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const { admin } = await authenticate.admin(request);
 
   try {
-    const customers = await fetchAllCustomers();
-    return json({
-      customers,
+    // Get top spenders immediately (fast)
+    const topSpenders = await getTopSpenders(admin);
+
+    // Defer loading all customers (slow)
+    const allCustomersPromise = getAllCustomers(admin);
+
+    return defer({
+      topSpenders,
+      allCustomers: allCustomersPromise,
       success: true,
-      error: null, // Add error property with null value for success case
+      error: null,
     });
   } catch (error) {
     console.error("Error in loader:", error);
-    return json({
-      customers: [],
+    return defer({
+      topSpenders: [],
+      allCustomers: Promise.resolve([]),
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",
     });
   }
 };
 
-export default function CustomersPage() {
-  interface LoaderData {
-    customers: any[];
-    success: boolean;
-    error: string | null;
-  }
-
-  const { customers, success, error } = useLoaderData<LoaderData>();
-  const submit = useSubmit();
+// Customer table component that handles both top spenders and all customers
+function CustomerTable({
+  customers,
+  isLoading = false,
+}: {
+  customers: any[];
+  isLoading?: boolean;
+}) {
   const [searchValue, setSearchValue] = useState("");
   const [selectedTab, setSelectedTab] = useState(0);
   const [sortField, setSortField] = useState("spent");
@@ -194,6 +245,7 @@ export default function CustomersPage() {
   );
   const [bonusPointsValue, setBonusPointsValue] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const submit = useSubmit();
 
   const resourceName = {
     singular: "customer",
@@ -247,14 +299,22 @@ export default function CustomersPage() {
   };
 
   // Function to determine customer tier based on total points
-  const getCustomerTier = (amountSpent: any, bonusPoints: number = 0) => {
-    const spent = parseFloat(amountSpent?.amount || "0");
-    const totalPoints = spent + bonusPoints; // $1 = 1 point, plus any bonus points
+  const getCustomerTier = (
+    amountSpent: any,
+    bonusPoints: number = 0,
+    tags: string[] = [],
+  ) => {
+    // Check if customer has "Reigning Champion" tag
+    const hasReigningChampionTag = tags.some(
+      (tag: string) => tag.toLowerCase() === "reigning champion",
+    );
 
-    if (totalPoints >= 100000) return "Reigning Champion";
-    if (totalPoints >= 25000) return "Heavyweight";
-    if (totalPoints >= 5000) return "Welterweight";
-    if (totalPoints >= 1500) return "Lightweight";
+    if (hasReigningChampionTag) return "Reigning Champion";
+
+    const spent = parseFloat(amountSpent?.amount || "0");
+    if (spent >= 25000) return "Heavyweight";
+    if (spent >= 5000) return "Welterweight";
+    if (spent >= 1500) return "Lightweight";
     return "Featherweight";
   };
 
@@ -310,7 +370,11 @@ export default function CustomersPage() {
       // Add tier and points to each customer object
       return {
         ...customer,
-        tier: getCustomerTier(customer.amountSpent, bonusPoints),
+        tier: getCustomerTier(
+          customer.amountSpent,
+          bonusPoints,
+          customer.tags || [],
+        ),
         name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
         location: customer.defaultAddress
           ? `${customer.defaultAddress.city || ""}, ${customer.defaultAddress.province || ""} ${customer.defaultAddress.country || ""}`
@@ -547,14 +611,136 @@ export default function CustomersPage() {
     </EmptyState>
   );
 
+  const statusText = isLoading
+    ? `${customers.length} customers loaded, loading more...`
+    : `${customers.length} total customers, ${sortedCustomers.length} filtered, showing page ${currentPage} of ${totalPages}`;
+
   return (
-    <Page fullWidth>
+    <>
       {selectedCustomer && (
         <CustomerLoyaltyCard
           customer={selectedCustomer}
           onClose={handleCloseCustomerModal}
         />
       )}
+      <Card>
+        <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange} />
+        <div style={{ padding: "16px" }}>
+          <TextField
+            label=""
+            value={searchValue}
+            onChange={setSearchValue}
+            placeholder="Search customers"
+            clearButton
+            onClearButtonClick={() => setSearchValue("")}
+            autoComplete="off"
+          />
+        </div>
+
+        <InlineStack align="space-between" gap="400">
+          <Text as="p" variant="bodyMd">
+            {statusText}
+          </Text>
+          <div>
+            <Button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              variant="tertiary"
+            >
+              Previous
+            </Button>
+            <span style={{ margin: "0 10px" }}>
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages || totalPages === 0}
+              variant="tertiary"
+            >
+              Next
+            </Button>
+          </div>
+        </InlineStack>
+
+        <IndexTable
+          resourceName={resourceName}
+          itemCount={rowMarkup.length}
+          selectedItemsCount={
+            allResourcesSelected ? "All" : selectedResources.length
+          }
+          onSelectionChange={handleSelectionChange}
+          headings={[
+            { title: `Name${getSortIndicator("name")}` },
+            { title: `Email${getSortIndicator("email")}` },
+            { title: `Tier${getSortIndicator("tier")}` },
+            { title: `Total Points${getSortIndicator("points")}` },
+            { title: `Bonus Points${getSortIndicator("bonus")}` },
+            { title: `Total Spent${getSortIndicator("spent")}` },
+            { title: `Orders${getSortIndicator("orders")}` },
+            { title: `Location${getSortIndicator("location")}` },
+            { title: "Actions" },
+          ]}
+          sortable={[true, true, true, true, true, true, true]}
+          sortDirection={sortDirection}
+          sortColumnIndex={
+            sortField === "name"
+              ? 0
+              : sortField === "email"
+                ? 1
+                : sortField === "tier"
+                  ? 2
+                  : sortField === "points"
+                    ? 3
+                    : sortField === "bonus"
+                      ? 4
+                      : sortField === "spent"
+                        ? 5
+                        : sortField === "orders"
+                          ? 6
+                          : sortField === "location"
+                            ? 7
+                            : 0
+          }
+          onSort={(index) => {
+            const field =
+              index === 0
+                ? "name"
+                : index === 1
+                  ? "email"
+                  : index === 2
+                    ? "tier"
+                    : index === 3
+                      ? "points"
+                      : index === 4
+                        ? "bonus"
+                        : index === 5
+                          ? "spent"
+                          : index === 6
+                            ? "orders"
+                            : index === 7
+                              ? "location"
+                              : "name";
+            handleSort(field);
+          }}
+          emptyState={emptyStateMarkup}
+        >
+          {rowMarkup}
+        </IndexTable>
+      </Card>
+    </>
+  );
+}
+
+export default function CustomersPage() {
+  const { topSpenders, allCustomers, success, error } = useLoaderData<{
+    topSpenders: any[];
+    allCustomers: Promise<any[]>;
+    success: boolean;
+    error: string | null;
+  }>();
+
+  return (
+    <Page fullWidth>
       <TitleBar title="Customers" />
       <Layout>
         <Layout.Section>
@@ -564,115 +750,22 @@ export default function CustomersPage() {
             </Banner>
           )}
 
-          <Card>
-            <Tabs
-              tabs={tabs}
-              selected={selectedTab}
-              onSelect={handleTabChange}
-            />
-            <div style={{ padding: "16px" }}>
-              <TextField
-                label=""
-                value={searchValue}
-                onChange={setSearchValue}
-                placeholder="Search customers"
-                clearButton
-                onClearButtonClick={() => setSearchValue("")}
-                autoComplete="off"
-              />
-            </div>
+          {/* Show top spenders immediately */}
+          <CustomerTable customers={topSpenders} isLoading={true} />
 
-            <InlineStack align="space-between" gap="400">
-              <Text as="p" variant="bodyMd">
-                {customers.length} total customers, {sortedCustomers.length}{" "}
-                filtered, showing page {currentPage} of {totalPages}
-              </Text>
-              <div>
-                <Button
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  variant="tertiary"
-                >
-                  Previous
-                </Button>
-                <span style={{ margin: "0 10px" }}>
-                  Page {currentPage} of {totalPages}
-                </span>
-                <Button
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages || totalPages === 0}
-                  variant="tertiary"
-                >
-                  Next
-                </Button>
-              </div>
-            </InlineStack>
-
-            <IndexTable
-              resourceName={resourceName}
-              itemCount={rowMarkup.length}
-              selectedItemsCount={
-                allResourcesSelected ? "All" : selectedResources.length
-              }
-              onSelectionChange={handleSelectionChange}
-              headings={[
-                { title: `Name${getSortIndicator("name")}` },
-                { title: `Email${getSortIndicator("email")}` },
-                { title: `Tier${getSortIndicator("tier")}` },
-                { title: `Total Points${getSortIndicator("points")}` },
-                { title: `Bonus Points${getSortIndicator("bonus")}` },
-                { title: `Total Spent${getSortIndicator("spent")}` },
-                { title: `Orders${getSortIndicator("orders")}` },
-                { title: `Location${getSortIndicator("location")}` },
-                { title: "Actions" },
-              ]}
-              sortable={[true, true, true, true, true, true, true]}
-              sortDirection={sortDirection}
-              sortColumnIndex={
-                sortField === "name"
-                  ? 0
-                  : sortField === "email"
-                    ? 1
-                    : sortField === "tier"
-                      ? 2
-                      : sortField === "points"
-                        ? 3
-                        : sortField === "bonus"
-                          ? 4
-                          : sortField === "spent"
-                            ? 5
-                            : sortField === "orders"
-                              ? 6
-                              : sortField === "location"
-                                ? 7
-                                : 0
-              }
-              onSort={(index) => {
-                const field =
-                  index === 0
-                    ? "name"
-                    : index === 1
-                      ? "email"
-                      : index === 2
-                        ? "tier"
-                        : index === 3
-                          ? "points"
-                          : index === 4
-                            ? "bonus"
-                            : index === 5
-                              ? "spent"
-                              : index === 6
-                                ? "orders"
-                                : index === 7
-                                  ? "location"
-                                  : "name";
-                handleSort(field);
-              }}
-              emptyState={emptyStateMarkup}
-            >
-              {rowMarkup}
-            </IndexTable>
-          </Card>
+          {/* Replace with all customers when loaded */}
+          <Suspense fallback={null}>
+            <Await resolve={allCustomers}>
+              {(resolvedCustomers) => (
+                <div style={{ marginTop: "-1px" }}>
+                  <CustomerTable
+                    customers={resolvedCustomers as any[]}
+                    isLoading={false}
+                  />
+                </div>
+              )}
+            </Await>
+          </Suspense>
         </Layout.Section>
       </Layout>
     </Page>
