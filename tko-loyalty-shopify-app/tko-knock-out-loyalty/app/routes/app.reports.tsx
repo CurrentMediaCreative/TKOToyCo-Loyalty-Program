@@ -16,11 +16,14 @@ import {
   Banner,
   SkeletonBodyText,
   EmptyState,
+  DataTable,
+  Badge,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getPointEvents } from "../services/pointEvent.server";
 import { getCustomers } from "../services/customer.server";
+import { getTiers } from "../services/tier.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -32,12 +35,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Fetch customers for customer summary
     const customers = await getCustomers();
 
-    return json({ events, customers });
+    // Fetch tiers for tier distribution analysis
+    const tiers = await getTiers();
+
+    return json({ events, customers, tiers });
   } catch (error) {
     console.error("Error loading data for reports:", error);
     return json({
       events: [],
       customers: [],
+      tiers: [],
       error: "Failed to load data for reports. Please try again later.",
     });
   }
@@ -84,7 +91,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function ReportsPage() {
-  const { events = [], customers = [] } = useLoaderData<typeof loader>();
+  const {
+    events = [],
+    customers = [],
+    tiers = [],
+  } = useLoaderData<typeof loader>();
   const submit = useSubmit();
   const [isGenerating, setIsGenerating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -198,6 +209,115 @@ export default function ReportsPage() {
     0,
   );
 
+  // Calculate tier distribution
+  const tierDistribution = tiers.map((tier: any) => {
+    const customersInTier = customers.filter(
+      (customer: any) => customer.tierId === tier.id,
+    );
+    const tierPoints = customersInTier.reduce(
+      (sum: number, customer: any) => sum + (customer.totalPoints || 0),
+      0,
+    );
+    return {
+      tierName: tier.name,
+      customerCount: customersInTier.length,
+      totalPoints: tierPoints,
+      percentage:
+        totalCustomers > 0
+          ? Math.round((customersInTier.length / totalCustomers) * 100)
+          : 0,
+    };
+  });
+
+  // Calculate event performance analytics
+  const eventAnalytics = events.map((event: any) => {
+    const now = new Date();
+    const startDate = new Date(event.startDate);
+    const endDate = new Date(event.endDate);
+
+    let status = "Upcoming";
+    if (now >= startDate && now <= endDate && event.isActive) {
+      status = "Active";
+    } else if (now > endDate) {
+      status = "Completed";
+    } else if (!event.isActive) {
+      status = "Inactive";
+    }
+
+    return {
+      id: event.id,
+      name: event.name,
+      status,
+      usageCount: event.usageCount || 0,
+      pointsAwarded: event.pointsAwarded || 0,
+      bonusPercentage: event.bonusPercentage,
+      eventType: event.eventType,
+      startDate: new Date(event.startDate).toLocaleDateString(),
+      endDate: new Date(event.endDate).toLocaleDateString(),
+    };
+  });
+
+  // Prepare tier distribution table data
+  const tierRows = tierDistribution.map((tier) => [
+    <Text
+      key={`tier-${tier.tierName}`}
+      variant="bodyMd"
+      fontWeight="bold"
+      as="span"
+    >
+      {tier.tierName}
+    </Text>,
+    <Text key={`count-${tier.tierName}`} variant="bodyMd" as="span">
+      {tier.customerCount}
+    </Text>,
+    <Text key={`percentage-${tier.tierName}`} variant="bodyMd" as="span">
+      {tier.percentage}%
+    </Text>,
+    <Text key={`points-${tier.tierName}`} variant="bodyMd" as="span">
+      {tier.totalPoints.toLocaleString()}
+    </Text>,
+  ]);
+
+  // Prepare event analytics table data
+  const eventRows = eventAnalytics.map((event) => [
+    <Text key={`name-${event.id}`} variant="bodyMd" fontWeight="bold" as="span">
+      {event.name}
+    </Text>,
+    <Badge
+      key={`status-${event.id}`}
+      tone={
+        event.status === "Active"
+          ? "success"
+          : event.status === "Completed"
+            ? "info"
+            : event.status === "Upcoming"
+              ? "attention"
+              : "critical"
+      }
+    >
+      {event.status}
+    </Badge>,
+    <Text key={`type-${event.id}`} variant="bodyMd" as="span">
+      {event.eventType === "store-wide"
+        ? "Store-wide"
+        : event.eventType === "collections"
+          ? "Collections"
+          : "Products"}
+    </Text>,
+    <Text key={`bonus-${event.id}`} variant="bodyMd" as="span">
+      {event.bonusPercentage}%
+    </Text>,
+    <Text key={`usage-${event.id}`} variant="bodyMd" as="span">
+      {event.usageCount}
+    </Text>,
+    <Text key={`points-${event.id}`} variant="bodyMd" as="span">
+      {event.pointsAwarded.toLocaleString()}
+    </Text>,
+    <Text key={`dates-${event.id}`} variant="bodyMd" as="span">
+      {event.startDate} - {event.endDate}
+    </Text>,
+  ]);
+
   return (
     <Page fullWidth>
       <TitleBar title="Points Reports & Exports" />
@@ -289,6 +409,98 @@ export default function ReportsPage() {
                     Export Report
                   </Button>
                 </BlockStack>
+              </BlockStack>
+            </Card>
+
+            {/* Tier Distribution Analytics */}
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Tier Distribution Analytics
+                </Text>
+                <Text as="p" variant="bodyMd">
+                  View how customers are distributed across loyalty tiers based
+                  on their total points.
+                </Text>
+
+                <Divider />
+
+                {tiers.length === 0 ? (
+                  <EmptyState
+                    heading="No tiers configured"
+                    image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                  >
+                    <p>
+                      Configure loyalty tiers first to view tier distribution
+                      analytics.
+                    </p>
+                  </EmptyState>
+                ) : (
+                  <DataTable
+                    columnContentTypes={[
+                      "text",
+                      "numeric",
+                      "numeric",
+                      "numeric",
+                    ]}
+                    headings={[
+                      "Tier Name",
+                      "Customers",
+                      "Percentage",
+                      "Total Points",
+                    ]}
+                    rows={tierRows}
+                  />
+                )}
+              </BlockStack>
+            </Card>
+
+            {/* Event Performance Analytics */}
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Event Performance Analytics
+                </Text>
+                <Text as="p" variant="bodyMd">
+                  Track the performance of bonus point events including usage
+                  and points awarded.
+                </Text>
+
+                <Divider />
+
+                {events.length === 0 ? (
+                  <EmptyState
+                    heading="No events available"
+                    image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                  >
+                    <p>
+                      Create bonus point events first to view performance
+                      analytics.
+                    </p>
+                  </EmptyState>
+                ) : (
+                  <DataTable
+                    columnContentTypes={[
+                      "text",
+                      "text",
+                      "text",
+                      "text",
+                      "numeric",
+                      "numeric",
+                      "text",
+                    ]}
+                    headings={[
+                      "Event Name",
+                      "Status",
+                      "Type",
+                      "Bonus %",
+                      "Usage",
+                      "Points Awarded",
+                      "Duration",
+                    ]}
+                    rows={eventRows}
+                  />
+                )}
               </BlockStack>
             </Card>
 

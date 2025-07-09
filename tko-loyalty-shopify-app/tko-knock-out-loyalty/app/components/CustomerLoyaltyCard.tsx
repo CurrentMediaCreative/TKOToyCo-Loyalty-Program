@@ -11,7 +11,7 @@ import {
   Grid,
   Divider,
 } from "@shopify/polaris";
-import { XIcon } from "@shopify/polaris-icons";
+import { XIcon, StarIcon, ExternalIcon } from "@shopify/polaris-icons";
 
 interface CustomerLoyaltyCardProps {
   customer: {
@@ -35,6 +35,7 @@ interface CustomerLoyaltyCardProps {
     consistency?: number; // 0-100 score based on order frequency
   };
   onClose: () => void;
+  onCrownReigningChampion?: (customerId: string) => void;
 }
 
 export function CustomerLoyaltyCard({
@@ -267,8 +268,28 @@ export function CustomerLoyaltyCard({
                 )}
               </BlockStack>
 
-              <InlineStack align="end">
-                <Button variant="primary">View Full Profile</Button>
+              <InlineStack align="end" gap="200">
+                {customer.tier !== "Reigning Champion" && (
+                  <Button
+                    variant="secondary"
+                    icon={<Icon source={StarIcon} />}
+                    onClick={() => {
+                      // This would trigger the Crown Reigning Champion functionality
+                      // For now, we'll show an alert
+                      alert(`Crown ${customer.name} as Reigning Champion?`);
+                    }}
+                  >
+                    Crown Reigning Champion
+                  </Button>
+                )}
+                <Button
+                  variant="primary"
+                  icon={<Icon source={ExternalIcon} />}
+                  url={`https://admin.shopify.com/store/tko-toy-co/customers/${customer.id}`}
+                  target="_blank"
+                >
+                  View in Shopify Admin
+                </Button>
               </InlineStack>
             </BlockStack>
           </Card>

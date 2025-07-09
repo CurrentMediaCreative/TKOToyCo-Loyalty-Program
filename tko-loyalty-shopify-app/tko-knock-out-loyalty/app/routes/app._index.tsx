@@ -428,7 +428,6 @@ export default function Index() {
                   <Text as="h2" variant="headingLg">
                     TKO Loyalty Program Dashboard
                   </Text>
-                  <Button variant="primary">Send Loyalty Update</Button>
                 </InlineStack>
                 <Text as="p" variant="bodyMd">
                   Welcome to your loyalty program dashboard. Here you can manage
@@ -678,7 +677,9 @@ export default function Index() {
                     </Link>
                   </Grid.Cell>
                   <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
-                    <Button fullWidth>View Reports</Button>
+                    <Link to="/app/reports">
+                      <Button fullWidth>View Reports</Button>
+                    </Link>
                   </Grid.Cell>
                 </Grid>
               </BlockStack>

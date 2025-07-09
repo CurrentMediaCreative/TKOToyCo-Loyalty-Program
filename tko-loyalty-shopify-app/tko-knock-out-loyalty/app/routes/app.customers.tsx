@@ -16,11 +16,14 @@ import {
   Tabs,
   Banner,
   InlineStack,
+  Icon,
 } from "@shopify/polaris";
+import { ViewIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getCustomerByShopifyId } from "../services/customer.server";
 import { adjustCustomerBonusPoints } from "../services/pointTransaction.server";
+import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -190,6 +193,7 @@ export default function CustomersPage() {
     null,
   );
   const [bonusPointsValue, setBonusPointsValue] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
 
   const resourceName = {
     singular: "customer",
@@ -442,6 +446,15 @@ export default function CustomersPage() {
     setBonusPointsValue("");
   };
 
+  // Handle viewing customer details
+  const handleViewCustomer = (customer: any) => {
+    setSelectedCustomer(customer);
+  };
+
+  const handleCloseCustomerModal = () => {
+    setSelectedCustomer(null);
+  };
+
   const rowMarkup = currentCustomers.map((customer: any, index: number) => {
     const id = customer.id.replace("gid://shopify/Customer/", "");
 
@@ -508,6 +521,16 @@ export default function CustomersPage() {
         <IndexTable.Cell>${customer.spentAmount.toFixed(2)}</IndexTable.Cell>
         <IndexTable.Cell>{customer.numberOfOrders || 0}</IndexTable.Cell>
         <IndexTable.Cell>{customer.location}</IndexTable.Cell>
+        <IndexTable.Cell>
+          <Button
+            variant="tertiary"
+            icon={<Icon source={ViewIcon} />}
+            onClick={() => handleViewCustomer(customer)}
+            accessibilityLabel={`View ${customer.name} details`}
+          >
+            View
+          </Button>
+        </IndexTable.Cell>
       </IndexTable.Row>
     );
   });
@@ -526,6 +549,12 @@ export default function CustomersPage() {
 
   return (
     <Page fullWidth>
+      {selectedCustomer && (
+        <CustomerLoyaltyCard
+          customer={selectedCustomer}
+          onClose={handleCloseCustomerModal}
+        />
+      )}
       <TitleBar title="Customers" />
       <Layout>
         <Layout.Section>
@@ -541,21 +570,16 @@ export default function CustomersPage() {
               selected={selectedTab}
               onSelect={handleTabChange}
             />
-            <div style={{ padding: "16px", display: "flex" }}>
-              <div style={{ flex: 1 }}>
-                <TextField
-                  label=""
-                  value={searchValue}
-                  onChange={setSearchValue}
-                  placeholder="Search customers"
-                  clearButton
-                  onClearButtonClick={() => setSearchValue("")}
-                  autoComplete="off"
-                />
-              </div>
-              <div style={{ marginLeft: "16px" }}>
-                <Button variant="primary">Add to tier</Button>
-              </div>
+            <div style={{ padding: "16px" }}>
+              <TextField
+                label=""
+                value={searchValue}
+                onChange={setSearchValue}
+                placeholder="Search customers"
+                clearButton
+                onClearButtonClick={() => setSearchValue("")}
+                autoComplete="off"
+              />
             </div>
 
             <InlineStack align="space-between" gap="400">
@@ -600,6 +624,7 @@ export default function CustomersPage() {
                 { title: `Total Spent${getSortIndicator("spent")}` },
                 { title: `Orders${getSortIndicator("orders")}` },
                 { title: `Location${getSortIndicator("location")}` },
+                { title: "Actions" },
               ]}
               sortable={[true, true, true, true, true, true, true]}
               sortDirection={sortDirection}

@@ -32,14 +32,14 @@ The TKO Toy Co Loyalty Program is built using a modern, scalable technology stac
 
 ### Desktop Application Technologies
 
-| Technology    | Purpose                    | Justification                                                                |
-| ------------- | -------------------------- | ---------------------------------------------------------------------------- |
-| Electron      | Desktop framework          | Cross-platform support, web technologies for desktop, system tray integration |
-| React         | UI library                 | Reuse of frontend components, consistent development experience              |
-| TypeScript    | Programming language       | Type safety, better IDE support, improved maintainability                    |
-| Material-UI   | Component library          | Consistent design system with the web application                            |
-| Electron Store| Local storage              | Persistent storage for settings and offline data                             |
-| IPC           | Process communication      | Secure communication between main and renderer processes                     |
+| Technology     | Purpose               | Justification                                                                 |
+| -------------- | --------------------- | ----------------------------------------------------------------------------- |
+| Electron       | Desktop framework     | Cross-platform support, web technologies for desktop, system tray integration |
+| React          | UI library            | Reuse of frontend components, consistent development experience               |
+| TypeScript     | Programming language  | Type safety, better IDE support, improved maintainability                     |
+| Material-UI    | Component library     | Consistent design system with the web application                             |
+| Electron Store | Local storage         | Persistent storage for settings and offline data                              |
+| IPC            | Process communication | Secure communication between main and renderer processes                      |
 
 ### Integration Technologies
 
@@ -376,6 +376,44 @@ The TKO Toy Co Loyalty Program is built using a modern, scalable technology stac
    - Test coverage improvement
    - Documentation updates
    - Dependency management
+
+## CRITICAL TROUBLESHOOTING FIXES
+
+### 🚨 PRISMA CLIENT TYPE ERRORS - READ THIS FIRST 🚨
+
+**PROBLEM**: TypeScript errors like "Property 'pendingOrder' does not exist on type 'PrismaClient'" even though the model exists in schema.prisma
+
+**ROOT CAUSE**: TypeScript language server cache issues, NOT Prisma generation problems
+
+**SOLUTIONS** (in order of preference):
+
+1. **Restart TypeScript Language Server** (FIRST TRY THIS):
+
+   - Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
+   - Type "TypeScript: Restart TS Server"
+   - Select and press Enter
+
+2. **If restart doesn't work, use @ts-ignore**:
+
+   ```typescript
+   // @ts-ignore - Model exists in database but TypeScript cache hasn't updated
+   return await prisma.pendingOrder.create({
+   ```
+
+3. **Last resort - Reload VS Code window**:
+   - Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
+   - Type "Developer: Reload Window"
+
+**IMPORTANT NOTES**:
+
+- DO NOT regenerate Prisma client repeatedly - it doesn't fix TypeScript cache issues
+- All models follow camelCase pattern: `PendingOrder` → `prisma.pendingOrder`
+- Other working examples: `Customer` → `prisma.customer`, `PointEvent` → `prisma.pointEvent`
+- This is a TypeScript/IDE issue, not a database or Prisma issue
+
+**VERIFICATION**: Check that other models like `prisma.customer` work fine - if they do, it's definitely a TypeScript cache issue.
+
+---
 
 ## Future Technical Considerations
 

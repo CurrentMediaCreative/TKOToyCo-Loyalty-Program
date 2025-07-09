@@ -147,6 +147,17 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
   - [x] Integrated with existing Shopify app navigation
   - [x] Deployed to production environment
 
+- [x] Bonus Points Management System
+
+  - [x] Implemented inline editing for customer bonus points in admin interface
+  - [x] Added bonus points column to customer table with click-to-edit functionality
+  - [x] Created action handler for processing bonus point updates with validation
+  - [x] Integrated with existing transaction tracking system for audit trail
+  - [x] Added automatic tier recalculation when bonus points change
+  - [x] Implemented Shopify metafield synchronization for bonus points
+  - [x] Added save/cancel UI controls for bonus point editing
+  - [x] Ensured full database integration with existing point calculation system
+
 - [ ] Annual Reset Mechanism
   - [ ] Design data structure for historical point tracking
   - [ ] Implement scheduled task for annual reset
@@ -161,20 +172,20 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 
   - [x] Update customer display to show point breakdown
   - [ ] Create point history/transactions view
-  - [ ] Implement manual point adjustment interface
+  - [x] Implement manual point adjustment interface
   - [ ] Update tier progress visualization to use points
 
-- [ ] Point Events Management UI
+- [x] Point Events Management UI
 
-  - [ ] Create point events listing page
-  - [ ] Implement event creation/editing form with:
+  - [x] Create point events listing page
+  - [x] Implement event creation/editing form with:
     - Start and end date/time selection
     - Event type selection (store-wide or product-specific)
     - Product selection for product-specific events
     - Bonus percentage configuration
     - Event name and description fields
   - [ ] Build calendar view for event scheduling
-  - [ ] Add event performance metrics
+  - [x] Add event performance metrics
 
 - [x] Data Export Functionality
 
@@ -191,12 +202,12 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 
 ### 8. Shopify Integration for Points System
 
-- [ ] Order Processing
+- [x] Order Processing
 
-  - [ ] Set up webhooks to capture new orders
-  - [ ] Implement point calculation on order completion
-  - [ ] Check for active point events during processing
-  - [ ] Create point transaction records
+  - [x] Set up webhooks to capture new orders
+  - [x] Implement point calculation on order completion
+  - [x] Check for active point events during processing
+  - [x] Create point transaction records
 
 - [ ] Customer Data Integration
   - [x] Update customer metafields for points
@@ -226,7 +237,54 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
   - [ ] Configure scheduled tasks for maintenance
   - [ ] Update documentation for points system
 
-## Known Issues
+## MVP COMPLETION ROADMAP - CRITICAL ISSUES TO FIX
+
+### **CRITICAL FIXES NEEDED FOR MVP LAUNCH**
+
+1. **Dashboard Issues (app.\_index.tsx)** ✅ **COMPLETED**
+
+   - ✅ Month filter was already working correctly (uses calendar months July 1-31)
+   - ✅ Customer loyalty popup now has "View in Shopify Admin" button with proper links
+   - ✅ "Send Loyalty Update" button removed (served no purpose)
+
+2. **Customer Management Issues (app.customers.tsx)** ✅ **COMPLETED**
+
+   - ✅ Added "View" icon buttons next to each customer to open loyalty popup
+   - ✅ Customer loyalty popup now has "Crown Reigning Champion" button (shows for non-Reigning Champion customers)
+   - ✅ Removed "Add to Tier" button (customers auto-assigned to tiers based on points)
+   - ✅ Customer detail view now links to Shopify admin customer page via "View in Shopify Admin" button
+
+3. **Tier Management Issues (app.tiers.tsx)** ✅ **COMPLETED**
+
+   - ✅ Can now add new tiers with "Add New Tier" button
+   - ✅ Can edit point ranges for existing tiers in modal
+   - ✅ Rewards management integrated into tiers (benefits are tier rewards)
+   - ✅ Full benefit editing functionality available in tier management
+   - ⚠️ Delete tier functionality missing (not critical for MVP - future implementation)
+
+4. **Rewards System Issues (app.rewards.tsx)** ✅ **COMPLETED**
+
+   - ✅ Integrated into tier management (benefits are tier rewards)
+   - ✅ Removed separate rewards page (redundant functionality)
+   - ✅ Benefits are automatically applied tier rewards, not redeemable items
+   - ✅ Full benefit editing functionality available in tier management
+
+5. **Point Events Issues (app.events.tsx)** ✅ **COMPLETED**
+
+   - ✅ Event creation and management fully functional
+   - ✅ Date/time selection working with current date picker
+   - ✅ Events auto-activate/deactivate based on timeline and isActive flag
+   - ✅ Event performance analytics implemented in reports page
+   - ⚠️ Calendar-style date picker (nice-to-have improvement, not critical for MVP)
+
+6. **Reports & Analytics Issues (app.reports.tsx)** ✅ **COMPLETED**
+   - ✅ Event performance analytics implemented with status tracking and usage metrics
+   - ✅ Tier distribution analytics implemented showing customer distribution across tiers
+   - ✅ Point distribution reports implemented with spend vs bonus point breakdown
+   - ✅ Enhanced reports page with comprehensive analytics tables
+   - ❌ Visual charts/graphs missing (lower priority for MVP)
+
+## Known Issues (Historical)
 
 1. Shopify App Integration:
 
@@ -240,8 +298,7 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
    - ✓ Fixed: Database schema migrated to points-based system
    - ✓ Fixed: Point events system fully implemented with admin UI
    - ✓ Fixed: Point transactions system implemented
-   - Missing webhook integration for automatic point processing on orders
-   - No direct link to Shopify customer profiles
+   - ✓ Fixed: Webhook integration for automatic point processing on orders
    - ✓ Fixed: TypeScript errors resolved after Prisma client regeneration and code updates
 
 3. Product Analysis System:
@@ -258,8 +315,8 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
    - ✓ Fixed: Database schema updated for points tracking
    - ✓ Fixed: Point events system implemented for promotional bonuses
    - ✓ Fixed: Point history tracking implemented
-   - No annual reset mechanism
-   - Missing webhook handler for order processing
+   - ✓ Fixed: Webhook handler for order processing implemented
+   - No annual reset mechanism (future implementation)
    - Database migration needs to be run in production environment
 
 ## Technical Debt

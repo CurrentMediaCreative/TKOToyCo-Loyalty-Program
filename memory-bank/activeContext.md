@@ -71,25 +71,39 @@ We are implementing a points-based loyalty system for the TKO Toy Co Loyalty Pro
 
 ### Current Focus
 
-1. **Points-Based System Completion**:
+**Collections-Based Point Events System Implementation**:
 
-   - Updating tier display to show point thresholds instead of spend thresholds
-   - Ensuring bonus points are properly displayed in the customer table
-   - Adding Shopify profile integration for customer details
-   - Creating data export functionality for customer points data
+1. **Point Events Logic Clarification**:
 
-2. **Point Events System**:
+   - Events are based on **collections** (not product types)
+   - Admin selects one or multiple collections when creating events
+   - Events can target online only, in-store only, or both purchase types
+   - System checks fulfilled orders against active events and applies bonus points
 
-   - Implementing the admin interface for point events management
-   - Integrating with checkout process to apply bonus points automatically
-   - Building event performance metrics and reporting
-   - Creating event filtering and search functionality
+2. **Customer-Facing Loyalty Display**:
 
-3. **Service Layer Updates**:
-   - Enhancing point calculation logic
-   - Creating methods for managing bonus points
-   - Building point history tracking
-   - Implementing point transaction records
+   - Cart UI showing current tier, total points, and points to be earned
+   - Real-time calculation showing spend points + bonus points breakdown
+   - Visual representation only - actual points applied on order fulfillment
+
+3. **Spend Points Rounding Logic**:
+
+   - Total lifetime spend = spend points, rounded to nearest dollar
+   - Examples: $1234.34 → 1234 points, $1234.87 → 1235 points
+   - No decimals in point display for visual clarity
+
+4. **Order Processing Pipeline**:
+
+   - Webhook handler for order fulfillment (not creation)
+   - Event matching logic (check if products are in event collections)
+   - Bonus point calculation: percentage of qualifying product subtotals
+   - Example: 10% event on $286 qualifying products = 28.6 → 29 bonus points
+
+5. **BinderPOS Integration**:
+   - In-store orders come through as regular Shopify orders
+   - Identified by order notes containing "BinderPOS Cart #[number]"
+   - In-store orders auto-fulfill, triggering immediate point calculation
+   - Online orders only get points when fulfilled (prevents cancellation issues)
 
 ## Recent Changes
 

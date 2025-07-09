@@ -30,21 +30,6 @@ import {
   deleteTierBenefit,
 } from "../services/tier.server";
 
-// Type definitions
-interface TierData {
-  id: string;
-  name: string;
-  spendThreshold: number;
-  maxSpend: number | null;
-  benefits: string[];
-  description: string;
-  color: string;
-}
-
-interface EditingTier extends TierData {
-  benefits: string[];
-}
-
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
 
@@ -203,6 +188,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return json({ success: true });
     }
 
+    if (action === "createTier") {
+      const name = formData.get("name") as string;
+      const minPoints = parseFloat(formData.get("minSpend") as string);
+      const color = formData.get("color") as string;
+      const benefits = JSON.parse(formData.get("benefits") as string);
+
+      // Create the tier
+      const tier = await createTier({
+        name,
+        description: color, // Store color in description field
+        minPoints,
+      });
+
+      // Create benefits for this tier
+      for (const benefitName of benefits) {
+        await createTierBenefit({
+          name: benefitName,
+          description: benefitName,
+          tierId: tier.id,
+        });
+      }
+
+      return json({ success: true });
+    }
+
     return json({ success: false, error: "Invalid action" });
   } catch (error) {
     console.error("Error in action:", error);
@@ -215,10 +225,26 @@ export default function TiersPage() {
   const [editingTier, setEditingTier] = useState<any | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBenefit, setNewBenefit] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
   const submit = useSubmit();
 
   const handleEditTier = (tier: any) => {
     setEditingTier({ ...tier, benefits: [...tier.benefits] });
+    setIsCreating(false);
+    setIsModalOpen(true);
+  };
+
+  const handleCreateTier = () => {
+    setEditingTier({
+      id: "",
+      name: "",
+      spendThreshold: 0,
+      maxSpend: null,
+      benefits: [],
+      description: "",
+      color: "#E0E0E0",
+    });
+    setIsCreating(true);
     setIsModalOpen(true);
   };
 
@@ -246,8 +272,12 @@ export default function TiersPage() {
   const handleSaveTier = () => {
     if (editingTier) {
       const formData = new FormData();
-      formData.append("action", "updateTier");
-      formData.append("tierId", editingTier.id);
+      formData.append("action", isCreating ? "createTier" : "updateTier");
+
+      if (!isCreating) {
+        formData.append("tierId", editingTier.id);
+      }
+
       formData.append("name", editingTier.name);
 
       // If this is the Reigning Champion tier, always use the special high value
@@ -263,6 +293,7 @@ export default function TiersPage() {
       submit(formData, { method: "post" });
       setIsModalOpen(false);
       setEditingTier(null);
+      setIsCreating(false);
     }
   };
 
@@ -314,13 +345,25 @@ export default function TiersPage() {
           <BlockStack gap="500">
             <Card>
               <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">
-                  Tier Configuration
-                </Text>
-                <Text as="p" variant="bodyMd">
-                  Configure your loyalty program tiers. Customers will be
-                  automatically assigned to tiers based on their total points.
-                </Text>
+                <InlineStack align="space-between">
+                  <div>
+                    <Text as="h2" variant="headingMd">
+                      Tier Configuration
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      Configure your loyalty program tiers and their benefits.
+                      Customers automatically receive tier benefits when they
+                      reach the required points.
+                    </Text>
+                  </div>
+                  <Button
+                    variant="primary"
+                    onClick={handleCreateTier}
+                    icon={<Icon source={PlusIcon} />}
+                  >
+                    Add New Tier
+                  </Button>
+                </InlineStack>
                 <DataTable
                   columnContentTypes={["text", "text", "text", "text", "text"]}
                   headings={[
@@ -413,7 +456,9 @@ export default function TiersPage() {
           setIsModalOpen(false);
           setEditingTier(null);
         }}
-        title={`Edit ${editingTier?.name} Tier`}
+        title={
+          isCreating ? "Create New Tier" : `Edit ${editingTier?.name} Tier`
+        }
         primaryAction={{
           content: "Save",
           onAction: handleSaveTier,
