@@ -30,7 +30,6 @@ export default function App() {
         <Link to="/app/events">Point Events</Link>
         <Link to="/app/points-calculator">Points Calculator</Link>
         <Link to="/app/product-analysis">Product Analysis</Link>
-        <Link to="/app/analyze-tags">Tag Analysis</Link>
         <Link to="/app/reports">Reports</Link>
         <Link to="/app/additional">Additional</Link>
       </NavMenu>
