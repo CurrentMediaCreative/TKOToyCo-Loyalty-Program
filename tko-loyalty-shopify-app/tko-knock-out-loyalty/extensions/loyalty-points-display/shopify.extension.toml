@@ -1,0 +1,33 @@
+api_version = "2025-04"
+
+[[extensions]]
+type = "ui_extension"
+name = "Loyalty Points Display"
+handle = "loyalty-points-display"
+
+[[extensions.targeting]]
+target = "purchase.checkout.block.render"
+module = "./src/Checkout.tsx"
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "admin_only"
+type = "boolean"
+name = "Admin Only Mode"
+description = "Only show to admin users during testing"
+
+[[extensions.settings.fields]]
+key = "title"
+type = "single_line_text_field"
+name = "Title"
+description = "The title of the loyalty points display"
+
+[[extensions.settings.fields]]
+key = "show_breakdown"
+type = "boolean"
+name = "Show Points Breakdown"
+description = "Show detailed breakdown of spend and bonus points"
+
+[[extensions.metafields]]
+namespace = "loyalty"
+key = "customer_points"

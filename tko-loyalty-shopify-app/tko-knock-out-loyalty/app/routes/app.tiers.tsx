@@ -30,6 +30,21 @@ import {
   deleteTierBenefit,
 } from "../services/tier.server";
 
+// Type definitions
+interface TierData {
+  id: string;
+  name: string;
+  spendThreshold: number;
+  maxSpend: number | null;
+  benefits: string[];
+  description: string;
+  color: string;
+}
+
+interface EditingTier extends TierData {
+  benefits: string[];
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
 
@@ -38,12 +53,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const dbTiers = await getTiers();
 
     // Transform the data to match the expected format in the UI
-    const tiers = dbTiers.map((tier) => ({
+    const tiers = dbTiers.map((tier: any) => ({
       id: tier.id,
       name: tier.name,
-      spendThreshold: tier.minSpend,
-      maxSpend: tier.maxSpend,
-      benefits: tier.benefits.map((benefit) => benefit.name),
+      spendThreshold: tier.minPoints,
+      maxSpend: tier.maxPoints,
+      benefits: tier.benefits.map((benefit: any) => benefit.name),
       description: tier.description || "",
       color: tier.description?.includes("#") ? tier.description : "#E0E0E0", // Use description field to store color temporarily
     }));
@@ -54,13 +69,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         {
           name: "Featherweight",
           description: "#E0E0E0",
-          minSpend: 0,
+          minPoints: 0,
           benefits: ["Welcome gift", "Birthday reward", "Exclusive newsletter"],
         },
         {
           name: "Lightweight",
           description: "#FFD23F",
-          minSpend: 1500,
+          minPoints: 1500,
           benefits: [
             "All Featherweight benefits",
             "Early access to sales",
@@ -70,7 +85,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         {
           name: "Welterweight",
           description: "#FF7C2A",
-          minSpend: 5000,
+          minPoints: 5000,
           benefits: [
             "All Lightweight benefits",
             "Double points on purchases",
@@ -80,7 +95,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         {
           name: "Heavyweight",
           description: "#00B8A2",
-          minSpend: 25000,
+          minPoints: 25000,
           benefits: [
             "All Welterweight benefits",
             "Free shipping on all orders",
@@ -90,7 +105,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         {
           name: "Reigning Champion",
           description: "#1F2937",
-          minSpend: 9999999, // Effectively invite-only (unattainable value)
+          minPoints: 9999999, // Effectively invite-only (unattainable value)
           benefits: [
             "All Heavyweight benefits",
             "Personal shopping assistant",
@@ -106,7 +121,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const tier = await createTier({
           name: tierData.name,
           description: tierData.description,
-          minSpend: tierData.minSpend,
+          minPoints: tierData.minPoints,
         });
 
         // Create benefits for this tier
@@ -121,12 +136,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
       // Fetch the newly created tiers
       const newDbTiers = await getTiers();
-      const newTiers = newDbTiers.map((tier) => ({
+      const newTiers = newDbTiers.map((tier: any) => ({
         id: tier.id,
         name: tier.name,
-        spendThreshold: tier.minSpend,
-        maxSpend: tier.maxSpend,
-        benefits: tier.benefits.map((benefit) => benefit.name),
+        spendThreshold: tier.minPoints,
+        maxSpend: tier.maxPoints,
+        benefits: tier.benefits.map((benefit: any) => benefit.name),
         description: tier.description || "",
         color: tier.description?.includes("#") ? tier.description : "#E0E0E0",
       }));
@@ -153,7 +168,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (action === "updateTier") {
       const tierId = formData.get("tierId") as string;
       const name = formData.get("name") as string;
-      const minSpend = parseFloat(formData.get("minSpend") as string);
+      const minPoints = parseFloat(formData.get("minSpend") as string);
       const color = formData.get("color") as string;
       const benefits = JSON.parse(formData.get("benefits") as string);
 
@@ -162,7 +177,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         id: tierId,
         name,
         description: color, // Store color in description field
-        minSpend,
+        minPoints,
       });
 
       // Get current benefits for this tier
@@ -251,7 +266,7 @@ export default function TiersPage() {
     }
   };
 
-  const rows = tiers.map((tier) => [
+  const rows = tiers.map((tier: any) => [
     <Text key={`name-${tier.id}`} variant="bodyMd" fontWeight="bold" as="span">
       {tier.name}
     </Text>,
@@ -261,7 +276,7 @@ export default function TiersPage() {
         : `${tier.spendThreshold.toLocaleString()} points`}
     </Text>,
     <div key={`benefits-${tier.id}`}>
-      {tier.benefits.map((benefit, index) => (
+      {tier.benefits.map((benefit: string, index: number) => (
         <div key={`benefit-${tier.id}-${index}`}>{benefit}</div>
       ))}
     </div>,
@@ -332,7 +347,7 @@ export default function TiersPage() {
                     gap: "16px",
                   }}
                 >
-                  {tiers.map((tier, index) => (
+                  {tiers.map((tier: any, index: number) => (
                     <div
                       key={tier.id}
                       style={{

@@ -245,8 +245,8 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
       // Fetch all tiers from the database
       const dbTiers = await getTiers();
 
-      // Sort tiers by minSpend in ascending order
-      const sortedTiers = [...dbTiers].sort((a, b) => a.minSpend - b.minSpend);
+      // Sort tiers by minPoints in ascending order
+      const sortedTiers = [...dbTiers].sort((a, b) => a.minPoints - b.minPoints);
 
       // Find the appropriate tier based on the customer's spend
       let matchedTier = sortedTiers[0]; // Default to the lowest tier
@@ -254,11 +254,11 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
       for (let i = sortedTiers.length - 1; i >= 0; i--) {
         const tier = sortedTiers[i];
         // Skip the Reigning Champion tier (which is invite-only)
-        if (tier.name === "Reigning Champion" || tier.minSpend >= 9999999) {
+        if (tier.name === "Reigning Champion" || tier.minPoints >= 9999999) {
           continue;
         }
 
-        if (spent >= tier.minSpend) {
+        if (spent >= tier.minPoints) {
           matchedTier = tier;
           break;
         }

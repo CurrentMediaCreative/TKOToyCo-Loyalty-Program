@@ -39,7 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   try {
-    console.log("🔍 Starting comprehensive tag analysis...");
+    console.log("🔍 Starting comprehensive product analysis...");
 
     // Fetch all products using GraphQL with pagination
     let allProducts: any[] = [];
@@ -257,13 +257,13 @@ function analyzeProductTags(products: any[]): TagAnalysis {
   };
 }
 
-export default function AnalyzeTags() {
+export default function ProductAnalysis() {
   const { analysis } = useLoaderData<typeof loader>();
 
   return (
     <Page
-      title="Shopify Store Tag Analysis"
-      subtitle="Comprehensive analysis of all product tags for Point Events planning"
+      title="Product Analysis"
+      subtitle="Comprehensive analysis of all products and tags for Point Events planning"
     >
       <Layout>
         <Layout.Section>
@@ -274,16 +274,16 @@ export default function AnalyzeTags() {
               </Text>
               <InlineStack gap="400">
                 <Badge tone="info">
-                  Total Products: {analysis.totalProducts}
+                  {`Total Products: ${analysis.totalProducts}`}
                 </Badge>
                 <Badge tone="success">
-                  Products with Tags: {analysis.productsWithTags}
+                  {`Products with Tags: ${analysis.productsWithTags}`}
                 </Badge>
                 <Badge tone="attention">
-                  Unique Tags: {analysis.uniqueTags}
+                  {`Unique Tags: ${analysis.uniqueTags}`}
                 </Badge>
                 <Badge>
-                  Avg Tags/Product: {analysis.averageTagsPerProduct}
+                  {`Avg Tags/Product: ${analysis.averageTagsPerProduct}`}
                 </Badge>
               </InlineStack>
             </BlockStack>
@@ -371,7 +371,7 @@ export default function AnalyzeTags() {
                   .slice(0, 10)
                   .map((item) => (
                     <Badge key={item.tag} tone="success">
-                      {item.tag} ({item.count})
+                      {`${item.tag} (${item.count})`}
                     </Badge>
                   ))}
               </InlineStack>
@@ -387,7 +387,7 @@ export default function AnalyzeTags() {
                   .slice(0, 15)
                   .map((item) => (
                     <Badge key={item.tag} tone="info">
-                      {item.tag} ({item.count})
+                      {`${item.tag} (${item.count})`}
                     </Badge>
                   ))}
               </InlineStack>
@@ -403,7 +403,7 @@ export default function AnalyzeTags() {
                   .slice(0, 15)
                   .map((item) => (
                     <Badge key={item.tag} tone="attention">
-                      {item.tag} ({item.count})
+                      {`${item.tag} (${item.count})`}
                     </Badge>
                   ))}
               </InlineStack>
@@ -478,7 +478,7 @@ export default function AnalyzeTags() {
                                   : "critical"
                           }
                         >
-                          {item.tag} ({item.count})
+                          {`${item.tag} (${item.count})`}
                         </Badge>
                       ))}
                     </InlineStack>

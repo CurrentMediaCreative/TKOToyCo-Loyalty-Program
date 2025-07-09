@@ -1,13 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -35,8 +29,8 @@ model Tier {
   id          String        @id @default(uuid())
   name        String
   description String?
-  minSpend    Float
-  maxSpend    Float?
+  minPoints   Float
+  maxPoints   Float?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   benefits    TierBenefit[]
@@ -48,35 +42,35 @@ model TierBenefit {
   name        String
   description String
   tierId      String
-  tier        Tier     @relation(fields: [tierId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  tier        Tier     @relation(fields: [tierId], references: [id], onDelete: Cascade)
 }
 
 model Customer {
-  id             String            @id
-  shopifyId      BigInt            @unique
-  email          String?
-  firstName      String?
-  lastName       String?
-  totalSpend     Float             @default(0)
-  spendPoints    Float             @default(0)
-  bonusPoints    Float             @default(0)
-  totalPoints    Float             @default(0)
-  tierId         String?
-  tier           Tier?             @relation(fields: [tierId], references: [id])
-  metafieldId    String?           @unique
-  lastOrderDate  DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  transactions   PointTransaction[]
+  id            String             @id
+  shopifyId     BigInt             @unique
+  email         String?
+  firstName     String?
+  lastName      String?
+  totalSpend    Float              @default(0)
+  tierId        String?
+  metafieldId   String?            @unique
+  lastOrderDate DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  spendPoints   Float              @default(0)
+  bonusPoints   Float              @default(0)
+  totalPoints   Float              @default(0)
+  tier          Tier?              @relation(fields: [tierId], references: [id])
+  transactions  PointTransaction[]
 
   @@index([totalPoints])
   @@map("Customer")
 }
 
 model PointEvent {
-  id              String            @id @default(uuid())
+  id              String             @id @default(uuid())
   name            String
   description     String?
   startDate       DateTime
@@ -85,28 +79,28 @@ model PointEvent {
   tags            String?   // JSON array of tags for category-based events (AND logic)
   productIds      String?   // JSON array of product IDs for product-specific events
   bonusPercentage Float
-  isActive        Boolean   @default(true)
-  usageCount      Int       @default(0)  // Number of times this event has been used
-  pointsAwarded   Float     @default(0)  // Total points awarded through this event
-  lastUsed        DateTime? // When the event was last used
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  transactions    PointTransaction[] // Transactions associated with this event
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  usageCount      Int                @default(0)
+  pointsAwarded   Float              @default(0)
+  lastUsed        DateTime?
+  transactions    PointTransaction[]
 
   @@map("PointEvent")
 }
 
 model PointTransaction {
-  id          String    @id @default(uuid())
-  customerId  String    // Reference to Customer.id
-  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  type        String    // "spend" or "bonus"
+  id          String      @id @default(uuid())
+  customerId  String
+  type        String
   amount      Float
-  orderId     String?   // Shopify order ID if applicable
-  eventId     String?   // Reference to PointEvent.id if applicable
-  event       PointEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  orderId     String?
+  eventId     String?
   description String?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime    @default(now())
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  event       PointEvent? @relation(fields: [eventId], references: [id])
 
   @@index([customerId])
   @@index([eventId])
