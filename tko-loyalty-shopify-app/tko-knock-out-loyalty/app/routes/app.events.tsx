@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit } from "@remix-run/react";
+import { useLoaderData, useSubmit, useFetcher } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -18,9 +18,10 @@ import {
   Icon,
   Badge,
   Select,
-  DatePicker,
   Box,
   EmptyState,
+  Tag,
+  Autocomplete,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { DeleteIcon, EditIcon } from "@shopify/polaris-icons";
@@ -36,9 +37,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
 
   try {
-    // Fetch events from the database
     const events = await getPointEvents();
-
     return json({ events });
   } catch (error) {
     console.error("Error loading events:", error);
@@ -70,7 +69,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
       const isActive = formData.get("isActive") === "true";
 
-      // Handle collections for collection-based events
       let collections: string[] | undefined;
       if (eventType === "collections") {
         const collectionsString = formData.get("collections") as string;
@@ -79,7 +77,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       }
 
-      // Handle product IDs for product-specific events
       let productIds: string[] | undefined;
       if (eventType === "product-specific") {
         const productIdsString = formData.get("productIds") as string;
@@ -120,7 +117,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
       const isActive = formData.get("isActive") === "true";
 
-      // Handle collections for collection-based events
       let collections: string[] | undefined;
       if (eventType === "collections") {
         const collectionsString = formData.get("collections") as string;
@@ -129,7 +125,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       }
 
-      // Handle product IDs for product-specific events
       let productIds: string[] | undefined;
       if (eventType === "product-specific") {
         const productIdsString = formData.get("productIds") as string;
@@ -168,6 +163,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
+interface Collection {
+  id: string;
+  title: string;
+  handle: string;
+  productsCount: number;
+}
+
+interface Product {
+  id: string;
+  title: string;
+  handle: string;
+  status: string;
+  image?: string;
+}
+
 export default function EventsPage() {
   const { events = [] } = useLoaderData<typeof loader>();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -176,91 +186,113 @@ export default function EventsPage() {
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const submit = useSubmit();
 
-  // Date picker state
-  const [{ month, year }, setDate] = useState({
-    month: new Date().getMonth(),
-    year: new Date().getFullYear(),
-  });
-  const [selectedStartDates, setSelectedStartDates] = useState({
-    start: new Date(),
-    end: new Date(),
-  });
-  const [selectedEndDates, setSelectedEndDates] = useState({
-    start: new Date(new Date().setDate(new Date().getDate() + 7)),
-    end: new Date(new Date().setDate(new Date().getDate() + 7)),
-  });
+  // Collections state
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [selectedCollections, setSelectedCollections] = useState<Collection[]>(
+    [],
+  );
+  const [collectionQuery, setCollectionQuery] = useState("");
 
-  const handleStartDateChange = (range: { start: Date; end: Date }) => {
-    setSelectedStartDates(range);
-    if (editingEvent) {
-      setEditingEvent({
-        ...editingEvent,
-        startDate: range.start,
-      });
+  // Products state
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+  const [productQuery, setProductQuery] = useState("");
+
+  const collectionsFetcher = useFetcher();
+  const productsFetcher = useFetcher();
+
+  // Load collections on mount
+  useEffect(() => {
+    collectionsFetcher.load("/api/collections");
+  }, [collectionsFetcher]);
+
+  // Handle collections data
+  useEffect(() => {
+    if (
+      collectionsFetcher.data &&
+      typeof collectionsFetcher.data === "object" &&
+      "collections" in collectionsFetcher.data
+    ) {
+      setCollections((collectionsFetcher.data as any).collections);
     }
-  };
+  }, [collectionsFetcher.data]);
 
-  const handleEndDateChange = (range: { start: Date; end: Date }) => {
-    setSelectedEndDates(range);
-    if (editingEvent) {
-      setEditingEvent({
-        ...editingEvent,
-        endDate: range.start,
-      });
+  // Handle products search with debouncing
+  useEffect(() => {
+    if (productQuery.length > 2) {
+      const timeoutId = setTimeout(() => {
+        productsFetcher.load(
+          `/api/products?query=${encodeURIComponent(productQuery)}`,
+        );
+      }, 300);
+      return () => clearTimeout(timeoutId);
+    } else {
+      setProducts([]);
     }
-  };
+  }, [productQuery, productsFetcher]);
 
-  const handleMonthChange = (month: number, year: number) => {
-    setDate({ month, year });
-  };
+  // Handle products data
+  useEffect(() => {
+    if (
+      productsFetcher.data &&
+      typeof productsFetcher.data === "object" &&
+      "products" in productsFetcher.data
+    ) {
+      setProducts((productsFetcher.data as any).products);
+    }
+  }, [productsFetcher.data]);
 
   const handleCreateEvent = () => {
     setEditingEvent({
       name: "",
       description: "",
-      startDate: new Date(),
-      endDate: new Date(new Date().setDate(new Date().getDate() + 7)),
+      startDate: new Date().toISOString().split("T")[0],
+      endDate: new Date(new Date().setDate(new Date().getDate() + 7))
+        .toISOString()
+        .split("T")[0],
       eventType: "collections",
+      collections: [],
       productIds: [],
       bonusPercentage: 10,
       isActive: true,
+      channel: "both",
     });
-    setSelectedStartDates({
-      start: new Date(),
-      end: new Date(),
-    });
-    setSelectedEndDates({
-      start: new Date(new Date().setDate(new Date().getDate() + 7)),
-      end: new Date(new Date().setDate(new Date().getDate() + 7)),
-    });
+    setSelectedCollections([]);
+    setSelectedProducts([]);
     setIsModalOpen(true);
   };
 
-  const handleEditEvent = (event: {
-    id: string;
-    name: string;
-    description?: string | null;
-    startDate: string | Date;
-    endDate: string | Date;
-    eventType: string;
-    productIds?: string | null;
-    bonusPercentage: number;
-    isActive: boolean;
-  }) => {
+  const handleEditEvent = (event: any) => {
+    const startDate = new Date(event.startDate).toISOString().split("T")[0];
+    const endDate = new Date(event.endDate).toISOString().split("T")[0];
+
     setEditingEvent({
       ...event,
-      startDate: new Date(event.startDate),
-      endDate: new Date(event.endDate),
+      startDate,
+      endDate,
+      collections: event.collections ? JSON.parse(event.collections) : [],
       productIds: event.productIds ? JSON.parse(event.productIds) : [],
     });
-    setSelectedStartDates({
-      start: new Date(event.startDate),
-      end: new Date(event.startDate),
-    });
-    setSelectedEndDates({
-      start: new Date(event.endDate),
-      end: new Date(event.endDate),
-    });
+
+    // Set selected collections/products for display
+    if (event.eventType === "collections" && event.collections) {
+      const collectionIds = JSON.parse(event.collections);
+      const selected = collections.filter((c) => collectionIds.includes(c.id));
+      setSelectedCollections(selected);
+    }
+
+    if (event.eventType === "product-specific" && event.productIds) {
+      const productIds = JSON.parse(event.productIds);
+      setSelectedProducts(
+        productIds.map((id: string) => ({
+          id,
+          title: `Product ${id}`,
+          handle: "",
+          status: "active",
+        })),
+      );
+    }
+
     setIsModalOpen(true);
   };
 
@@ -283,36 +315,44 @@ export default function EventsPage() {
 
       formData.append("name", editingEvent.name);
       formData.append("description", editingEvent.description || "");
-      formData.append("startDate", editingEvent.startDate.toISOString());
-      formData.append("endDate", editingEvent.endDate.toISOString());
+      formData.append(
+        "startDate",
+        new Date(editingEvent.startDate).toISOString(),
+      );
+      formData.append("endDate", new Date(editingEvent.endDate).toISOString());
       formData.append("eventType", editingEvent.eventType);
       formData.append(
         "bonusPercentage",
         editingEvent.bonusPercentage.toString(),
       );
       formData.append("isActive", editingEvent.isActive.toString());
+      formData.append("channel", editingEvent.channel || "both");
 
       if (
         editingEvent.eventType === "collections" &&
-        editingEvent.collections &&
-        editingEvent.collections.length > 0
+        selectedCollections.length > 0
       ) {
-        formData.append("collections", editingEvent.collections.join(","));
+        formData.append(
+          "collections",
+          selectedCollections.map((c) => c.id).join(","),
+        );
       }
 
       if (
         editingEvent.eventType === "product-specific" &&
-        editingEvent.productIds &&
-        editingEvent.productIds.length > 0
+        selectedProducts.length > 0
       ) {
-        formData.append("productIds", editingEvent.productIds.join(","));
+        formData.append(
+          "productIds",
+          selectedProducts.map((p) => p.id).join(","),
+        );
       }
-
-      formData.append("channel", editingEvent.channel || "both");
 
       submit(formData, { method: "post" });
       setIsModalOpen(false);
       setEditingEvent(null);
+      setSelectedCollections([]);
+      setSelectedProducts([]);
     }
   };
 
@@ -337,11 +377,7 @@ export default function EventsPage() {
     );
   };
 
-  const getStatusBadge = (event: {
-    startDate: string | Date;
-    endDate: string | Date;
-    isActive: boolean;
-  }) => {
+  const getStatusBadge = (event: any) => {
     const now = new Date();
     const startDate = new Date(event.startDate);
     const endDate = new Date(event.endDate);
@@ -361,71 +397,120 @@ export default function EventsPage() {
     return <Badge tone="success">Active</Badge>;
   };
 
-  const rows = events.map(
-    (event: {
-      id: string;
-      name: string;
-      eventType: string;
-      bonusPercentage: number;
-      startDate: string | Date;
-      endDate: string | Date;
-      isActive: boolean;
-      usageCount?: number;
-      pointsAwarded?: number;
-      lastUsed?: string | Date | null;
-    }) => [
-      <Text
-        key={`name-${event.id}`}
-        variant="bodyMd"
-        fontWeight="bold"
-        as="span"
-      >
-        {event.name}
-      </Text>,
-      <Text key={`type-${event.id}`} variant="bodyMd" as="span">
-        {event.eventType === "store-wide" ? "Store-wide" : "Product-specific"}
-      </Text>,
-      <Text key={`bonus-${event.id}`} variant="bodyMd" as="span">
-        {event.bonusPercentage}%
-      </Text>,
-      <div key={`dates-${event.id}`}>
-        <div>{formatDate(event.startDate)}</div>
-        <div>to</div>
-        <div>{formatDate(event.endDate)}</div>
-      </div>,
-      <div key={`status-${event.id}`}>{getStatusBadge(event)}</div>,
-      <div key={`usage-${event.id}`}>
-        <Text variant="bodyMd" as="span">
-          {event.usageCount || 0} uses
-        </Text>
-        {event.lastUsed && (
-          <Text variant="bodySm" as="p" tone="subdued">
-            Last: {formatDate(event.lastUsed)}
-          </Text>
-        )}
-      </div>,
-      <Text key={`points-${event.id}`} variant="bodyMd" as="span">
-        {event.pointsAwarded ? event.pointsAwarded.toFixed(0) : "0"}
-      </Text>,
-      <InlineStack key={`actions-${event.id}`} gap="200" align="end">
-        <Button
-          variant="tertiary"
-          onClick={() => handleEditEvent(event)}
-          icon={<Icon source={EditIcon} />}
-        >
-          Edit
-        </Button>
-        <Button
-          variant="tertiary"
-          tone="critical"
-          onClick={() => handleDeleteEvent(event.id)}
-          icon={<Icon source={DeleteIcon} />}
-        >
-          Delete
-        </Button>
-      </InlineStack>,
-    ],
+  // Collection selection handlers
+  const handleCollectionSelect = useCallback(
+    (selected: string[]) => {
+      if (selected.length > 0) {
+        const value = selected[0];
+        const collection = collections.find((c) => c.id === value);
+        if (
+          collection &&
+          !selectedCollections.find((c) => c.id === collection.id)
+        ) {
+          setSelectedCollections([...selectedCollections, collection]);
+        }
+        setCollectionQuery("");
+      }
+    },
+    [collections, selectedCollections],
   );
+
+  const handleCollectionRemove = useCallback(
+    (collectionId: string) => {
+      setSelectedCollections(
+        selectedCollections.filter((c) => c.id !== collectionId),
+      );
+    },
+    [selectedCollections],
+  );
+
+  // Product selection handlers
+  const handleProductSelect = useCallback(
+    (selected: string[]) => {
+      if (selected.length > 0) {
+        const value = selected[0];
+        const product = products.find((p) => p.id === value);
+        if (product && !selectedProducts.find((p) => p.id === product.id)) {
+          setSelectedProducts([...selectedProducts, product]);
+        }
+        setProductQuery("");
+      }
+    },
+    [products, selectedProducts],
+  );
+
+  const handleProductRemove = useCallback(
+    (productId: string) => {
+      setSelectedProducts(selectedProducts.filter((p) => p.id !== productId));
+    },
+    [selectedProducts],
+  );
+
+  const collectionOptions = collections
+    .filter((collection) =>
+      collection.title.toLowerCase().includes(collectionQuery.toLowerCase()),
+    )
+    .map((collection) => ({
+      value: collection.id,
+      label: `${collection.title} (${collection.productsCount} products)`,
+    }));
+
+  const productOptions = products.map((product) => ({
+    value: product.id,
+    label: product.title,
+  }));
+
+  const rows = events.map((event: any) => [
+    <Text key={`name-${event.id}`} variant="bodyMd" fontWeight="bold" as="span">
+      {event.name}
+    </Text>,
+    <Text key={`type-${event.id}`} variant="bodyMd" as="span">
+      {event.eventType === "store-wide"
+        ? "Store-wide"
+        : event.eventType === "collections"
+          ? "Collections"
+          : "Product-specific"}
+    </Text>,
+    <Text key={`bonus-${event.id}`} variant="bodyMd" as="span">
+      {event.bonusPercentage}%
+    </Text>,
+    <div key={`dates-${event.id}`}>
+      <div>{formatDate(event.startDate)}</div>
+      <div>to</div>
+      <div>{formatDate(event.endDate)}</div>
+    </div>,
+    <div key={`status-${event.id}`}>{getStatusBadge(event)}</div>,
+    <div key={`usage-${event.id}`}>
+      <Text variant="bodyMd" as="span">
+        {event.usageCount || 0} uses
+      </Text>
+      {event.lastUsed && (
+        <Text variant="bodySm" as="p" tone="subdued">
+          Last: {formatDate(event.lastUsed)}
+        </Text>
+      )}
+    </div>,
+    <Text key={`points-${event.id}`} variant="bodyMd" as="span">
+      {event.pointsAwarded ? event.pointsAwarded.toFixed(0) : "0"}
+    </Text>,
+    <InlineStack key={`actions-${event.id}`} gap="200" align="end">
+      <Button
+        variant="tertiary"
+        onClick={() => handleEditEvent(event)}
+        icon={<Icon source={EditIcon} />}
+      >
+        Edit
+      </Button>
+      <Button
+        variant="tertiary"
+        tone="critical"
+        onClick={() => handleDeleteEvent(event.id)}
+        icon={<Icon source={DeleteIcon} />}
+      >
+        Delete
+      </Button>
+    </InlineStack>,
+  ]);
 
   return (
     <Page fullWidth>
@@ -446,7 +531,8 @@ export default function EventsPage() {
                 </Text>
                 <Text as="p" variant="bodyMd">
                   Create and manage bonus point events to reward your customers.
-                  Events can be store-wide or for specific products.
+                  Events can be store-wide, collection-based, or for specific
+                  products.
                 </Text>
 
                 {events.length === 0 ? (
@@ -499,6 +585,8 @@ export default function EventsPage() {
         onClose={() => {
           setIsModalOpen(false);
           setEditingEvent(null);
+          setSelectedCollections([]);
+          setSelectedProducts([]);
         }}
         title={editingEvent?.id ? "Edit Point Event" : "Create Point Event"}
         primaryAction={{
@@ -511,6 +599,8 @@ export default function EventsPage() {
             onAction: () => {
               setIsModalOpen(false);
               setEditingEvent(null);
+              setSelectedCollections([]);
+              setSelectedProducts([]);
             },
           },
         ]}
@@ -545,45 +635,87 @@ export default function EventsPage() {
                   { label: "Product-specific", value: "product-specific" },
                 ]}
                 value={editingEvent.eventType}
-                onChange={(value) =>
-                  setEditingEvent({ ...editingEvent, eventType: value })
-                }
+                onChange={(value) => {
+                  setEditingEvent({ ...editingEvent, eventType: value });
+                  setSelectedCollections([]);
+                  setSelectedProducts([]);
+                }}
               />
 
               {editingEvent.eventType === "collections" && (
-                <TextField
-                  label="Collection IDs"
-                  value={editingEvent.collections?.join(", ") || ""}
-                  onChange={(value) =>
-                    setEditingEvent({
-                      ...editingEvent,
-                      collections: value
-                        .split(",")
-                        .map((id: string) => id.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  helpText="Enter comma-separated collection IDs (e.g., 123456789, 987654321)"
-                  autoComplete="off"
-                />
+                <Box>
+                  <Text variant="bodyMd" as="p">
+                    Collections
+                  </Text>
+                  <BlockStack gap="200">
+                    <Autocomplete
+                      options={collectionOptions}
+                      selected={[]}
+                      onSelect={handleCollectionSelect}
+                      textField={
+                        <Autocomplete.TextField
+                          onChange={setCollectionQuery}
+                          label=""
+                          value={collectionQuery}
+                          placeholder="Search collections..."
+                          autoComplete="off"
+                        />
+                      }
+                    />
+
+                    {selectedCollections.length > 0 && (
+                      <InlineStack gap="100" wrap>
+                        {selectedCollections.map((collection) => (
+                          <Tag
+                            key={collection.id}
+                            onRemove={() =>
+                              handleCollectionRemove(collection.id)
+                            }
+                          >
+                            {collection.title}
+                          </Tag>
+                        ))}
+                      </InlineStack>
+                    )}
+                  </BlockStack>
+                </Box>
               )}
 
               {editingEvent.eventType === "product-specific" && (
-                <TextField
-                  label="Product IDs"
-                  value={editingEvent.productIds?.join(", ") || ""}
-                  onChange={(value) =>
-                    setEditingEvent({
-                      ...editingEvent,
-                      productIds: value
-                        .split(",")
-                        .map((id: string) => id.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  helpText="Enter comma-separated product IDs (e.g., 123456789, 987654321)"
-                  autoComplete="off"
-                />
+                <Box>
+                  <Text variant="bodyMd" as="p">
+                    Products
+                  </Text>
+                  <BlockStack gap="200">
+                    <Autocomplete
+                      options={productOptions}
+                      selected={[]}
+                      onSelect={handleProductSelect}
+                      textField={
+                        <Autocomplete.TextField
+                          onChange={setProductQuery}
+                          label=""
+                          value={productQuery}
+                          placeholder="Search products..."
+                          autoComplete="off"
+                        />
+                      }
+                    />
+
+                    {selectedProducts.length > 0 && (
+                      <InlineStack gap="100" wrap>
+                        {selectedProducts.map((product) => (
+                          <Tag
+                            key={product.id}
+                            onRemove={() => handleProductRemove(product.id)}
+                          >
+                            {product.title}
+                          </Tag>
+                        ))}
+                      </InlineStack>
+                    )}
+                  </BlockStack>
+                </Box>
               )}
 
               <Select
@@ -619,48 +751,41 @@ export default function EventsPage() {
                 Event Duration
               </Text>
 
-              <BlockStack gap="400">
-                <Box>
-                  <Text variant="bodyMd" as="p">
-                    Start Date
-                  </Text>
-                  <DatePicker
-                    month={month}
-                    year={year}
-                    onChange={handleStartDateChange}
-                    onMonthChange={handleMonthChange}
-                    selected={selectedStartDates}
-                  />
-                </Box>
-
-                <Box>
-                  <Text variant="bodyMd" as="p">
-                    End Date
-                  </Text>
-                  <DatePicker
-                    month={month}
-                    year={year}
-                    onChange={handleEndDateChange}
-                    onMonthChange={handleMonthChange}
-                    selected={selectedEndDates}
-                  />
-                </Box>
-
-                <Select
-                  label="Status"
-                  options={[
-                    { label: "Active", value: "true" },
-                    { label: "Inactive", value: "false" },
-                  ]}
-                  value={editingEvent.isActive.toString()}
+              <InlineStack gap="400">
+                <TextField
+                  label="Start Date"
+                  type="date"
+                  value={editingEvent.startDate}
                   onChange={(value) =>
-                    setEditingEvent({
-                      ...editingEvent,
-                      isActive: value === "true",
-                    })
+                    setEditingEvent({ ...editingEvent, startDate: value })
                   }
+                  autoComplete="off"
                 />
-              </BlockStack>
+                <TextField
+                  label="End Date"
+                  type="date"
+                  value={editingEvent.endDate}
+                  onChange={(value) =>
+                    setEditingEvent({ ...editingEvent, endDate: value })
+                  }
+                  autoComplete="off"
+                />
+              </InlineStack>
+
+              <Select
+                label="Status"
+                options={[
+                  { label: "Active", value: "true" },
+                  { label: "Inactive", value: "false" },
+                ]}
+                value={editingEvent.isActive.toString()}
+                onChange={(value) =>
+                  setEditingEvent({
+                    ...editingEvent,
+                    isActive: value === "true",
+                  })
+                }
+              />
             </FormLayout>
           )}
         </Modal.Section>
