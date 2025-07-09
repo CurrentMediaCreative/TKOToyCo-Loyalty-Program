@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useSubmit } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -19,6 +19,56 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
+import { getCustomerByShopifyId } from "../services/customer.server";
+import { adjustCustomerBonusPoints } from "../services/pointTransaction.server";
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { admin } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const action = formData.get("action") as string;
+
+  try {
+    if (action === "updateBonusPoints") {
+      const customerId = formData.get("customerId") as string;
+      const newBonusPoints = parseFloat(formData.get("bonusPoints") as string);
+
+      if (isNaN(newBonusPoints) || newBonusPoints < 0) {
+        return json({ success: false, error: "Invalid bonus points value" });
+      }
+
+      // Get the customer from our database using Shopify ID
+      const customer = await getCustomerByShopifyId(parseInt(customerId));
+
+      if (!customer) {
+        return json({ success: false, error: "Customer not found" });
+      }
+
+      // Calculate the difference to create a transaction record
+      const currentBonusPoints = customer.bonusPoints || 0;
+      const difference = newBonusPoints - currentBonusPoints;
+
+      if (difference !== 0) {
+        // Create a transaction record for the adjustment
+        await adjustCustomerBonusPoints({
+          customerId: customer.id,
+          amount: difference,
+          reason: `Admin adjustment: Set bonus points to ${newBonusPoints}`,
+          admin,
+        });
+      }
+
+      return json({ success: true });
+    }
+
+    return json({ success: false, error: "Invalid action" });
+  } catch (error) {
+    console.error("Error in action:", error);
+    return json({
+      success: false,
+      error: error instanceof Error ? error.message : "An error occurred",
+    });
+  }
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -127,6 +177,7 @@ export default function CustomersPage() {
   }
 
   const { customers, success, error } = useLoaderData<LoaderData>();
+  const submit = useSubmit();
   const [searchValue, setSearchValue] = useState("");
   const [selectedTab, setSelectedTab] = useState(0);
   const [sortField, setSortField] = useState("spent");
@@ -135,6 +186,10 @@ export default function CustomersPage() {
   >("descending");
   const [currentPage, setCurrentPage] = useState(1);
   const customersPerPage = 50;
+  const [editingBonusPoints, setEditingBonusPoints] = useState<string | null>(
+    null,
+  );
+  const [bonusPointsValue, setBonusPointsValue] = useState("");
 
   const resourceName = {
     singular: "customer",
@@ -310,6 +365,10 @@ export default function CustomersPage() {
             valueA = a.totalPoints || 0;
             valueB = b.totalPoints || 0;
             break;
+          case "bonus":
+            valueA = a.bonusPoints || 0;
+            valueB = b.bonusPoints || 0;
+            break;
           case "spent":
             valueA = a.spentAmount;
             valueB = b.spentAmount;
@@ -358,6 +417,31 @@ export default function CustomersPage() {
     setCurrentPage(newPage);
   };
 
+  // Handle bonus points editing
+  const handleBonusPointsEdit = (
+    customerId: string,
+    currentBonusPoints: number,
+  ) => {
+    setEditingBonusPoints(customerId);
+    setBonusPointsValue(currentBonusPoints.toString());
+  };
+
+  const handleBonusPointsSave = (customerId: string) => {
+    const formData = new FormData();
+    formData.append("action", "updateBonusPoints");
+    formData.append("customerId", customerId);
+    formData.append("bonusPoints", bonusPointsValue);
+
+    submit(formData, { method: "post" });
+    setEditingBonusPoints(null);
+    setBonusPointsValue("");
+  };
+
+  const handleBonusPointsCancel = () => {
+    setEditingBonusPoints(null);
+    setBonusPointsValue("");
+  };
+
   const rowMarkup = currentCustomers.map((customer: any, index: number) => {
     const id = customer.id.replace("gid://shopify/Customer/", "");
 
@@ -381,6 +465,45 @@ export default function CustomersPage() {
         </IndexTable.Cell>
         <IndexTable.Cell>
           {customer.totalPoints.toLocaleString()}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {editingBonusPoints === id ? (
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <TextField
+                value={bonusPointsValue}
+                onChange={setBonusPointsValue}
+                type="number"
+                autoComplete="off"
+                label=""
+                size="slim"
+              />
+              <Button
+                size="micro"
+                onClick={() => handleBonusPointsSave(id)}
+                variant="primary"
+              >
+                Save
+              </Button>
+              <Button
+                size="micro"
+                onClick={handleBonusPointsCancel}
+                variant="tertiary"
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div
+              style={{ cursor: "pointer" }}
+              onClick={() => handleBonusPointsEdit(id, customer.bonusPoints)}
+            >
+              <Text as="span">{customer.bonusPoints.toLocaleString()}</Text>
+              <Text as="span" tone="subdued" variant="bodySm">
+                {" "}
+                (click to edit)
+              </Text>
+            </div>
+          )}
         </IndexTable.Cell>
         <IndexTable.Cell>${customer.spentAmount.toFixed(2)}</IndexTable.Cell>
         <IndexTable.Cell>{customer.numberOfOrders || 0}</IndexTable.Cell>
@@ -473,6 +596,7 @@ export default function CustomersPage() {
                 { title: `Email${getSortIndicator("email")}` },
                 { title: `Tier${getSortIndicator("tier")}` },
                 { title: `Total Points${getSortIndicator("points")}` },
+                { title: `Bonus Points${getSortIndicator("bonus")}` },
                 { title: `Total Spent${getSortIndicator("spent")}` },
                 { title: `Orders${getSortIndicator("orders")}` },
                 { title: `Location${getSortIndicator("location")}` },
@@ -488,13 +612,15 @@ export default function CustomersPage() {
                       ? 2
                       : sortField === "points"
                         ? 3
-                        : sortField === "spent"
+                        : sortField === "bonus"
                           ? 4
-                          : sortField === "orders"
+                          : sortField === "spent"
                             ? 5
-                            : sortField === "location"
+                            : sortField === "orders"
                               ? 6
-                              : 0
+                              : sortField === "location"
+                                ? 7
+                                : 0
               }
               onSort={(index) => {
                 const field =
@@ -507,12 +633,14 @@ export default function CustomersPage() {
                         : index === 3
                           ? "points"
                           : index === 4
-                            ? "spent"
+                            ? "bonus"
                             : index === 5
-                              ? "orders"
+                              ? "spent"
                               : index === 6
-                                ? "location"
-                                : "name";
+                                ? "orders"
+                                : index === 7
+                                  ? "location"
+                                  : "name";
                 handleSort(field);
               }}
               emptyState={emptyStateMarkup}

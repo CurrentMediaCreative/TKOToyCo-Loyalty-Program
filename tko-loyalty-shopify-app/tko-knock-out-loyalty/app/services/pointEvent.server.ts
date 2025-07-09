@@ -50,7 +50,9 @@ export async function createPointEvent({
   startDate,
   endDate,
   eventType,
+  collections,
   productIds,
+  channel = "both",
   bonusPercentage,
   isActive = true,
 }: {
@@ -58,12 +60,15 @@ export async function createPointEvent({
   description?: string;
   startDate: Date;
   endDate: Date;
-  eventType: "store-wide" | "product-specific";
+  eventType: "store-wide" | "collections" | "product-specific";
+  collections?: string[]; // Array of collection IDs for collection-based events
   productIds?: string[]; // Array of product IDs for product-specific events
+  channel?: "online" | "instore" | "both";
   bonusPercentage: number;
   isActive?: boolean;
 }) {
-  // Convert productIds array to JSON string if provided
+  // Convert arrays to JSON strings if provided
+  const collectionsString = collections ? JSON.stringify(collections) : null;
   const productIdsString = productIds ? JSON.stringify(productIds) : null;
 
   return prisma.pointEvent.create({
@@ -73,7 +78,9 @@ export async function createPointEvent({
       startDate,
       endDate,
       eventType,
+      collections: collectionsString,
       productIds: productIdsString,
+      channel,
       bonusPercentage,
       isActive,
     },
@@ -90,7 +97,9 @@ export async function updatePointEvent({
   startDate,
   endDate,
   eventType,
+  collections,
   productIds,
+  channel,
   bonusPercentage,
   isActive,
 }: {
@@ -99,12 +108,17 @@ export async function updatePointEvent({
   description?: string | null;
   startDate?: Date;
   endDate?: Date;
-  eventType?: "store-wide" | "product-specific";
+  eventType?: "store-wide" | "collections" | "product-specific";
+  collections?: string[] | null; // Array of collection IDs for collection-based events
   productIds?: string[] | null; // Array of product IDs for product-specific events
+  channel?: "online" | "instore" | "both";
   bonusPercentage?: number;
   isActive?: boolean;
 }) {
-  // Convert productIds array to JSON string if provided
+  // Convert arrays to JSON strings if provided
+  const collectionsString = collections
+    ? JSON.stringify(collections)
+    : undefined;
   const productIdsString = productIds ? JSON.stringify(productIds) : undefined;
 
   return prisma.pointEvent.update({
@@ -115,7 +129,9 @@ export async function updatePointEvent({
       startDate,
       endDate,
       eventType,
+      collections: collectionsString,
       productIds: productIdsString,
+      channel,
       bonusPercentage,
       isActive,
     },
@@ -158,44 +174,85 @@ export async function updatePointEventStats(
 
 /**
  * Calculate bonus points for a purchase based on active events
+ * This function will be called from the order fulfillment webhook
  */
 export async function calculateBonusPoints({
-  purchaseAmount,
-  productIds,
+  orderLineItems,
+  isInstoreOrder = false,
 }: {
-  purchaseAmount: number;
-  productIds?: string[]; // Product IDs in the purchase
+  orderLineItems: Array<{
+    productId: string;
+    price: number;
+    quantity: number;
+    collections: string[]; // Collection IDs that this product belongs to
+  }>;
+  isInstoreOrder?: boolean;
 }) {
-  let bonusPoints = 0;
+  let totalBonusPoints = 0;
   const activeEvents = await getActivePointEvents();
+  const appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
 
   for (const event of activeEvents) {
-    // For store-wide events, apply to the entire purchase
+    // Check if event applies to this order channel
+    if (
+      (event.channel === "online" && isInstoreOrder) ||
+      (event.channel === "instore" && !isInstoreOrder)
+    ) {
+      continue; // Skip this event
+    }
+
+    let eventBonusPoints = 0;
+
+    // For store-wide events, apply to all products
     if (event.eventType === "store-wide") {
-      bonusPoints += (purchaseAmount * event.bonusPercentage) / 100;
-      continue;
+      for (const lineItem of orderLineItems) {
+        const lineItemTotal = lineItem.price * lineItem.quantity;
+        eventBonusPoints += (lineItemTotal * event.bonusPercentage) / 100;
+      }
+    }
+
+    // For collection-based events, check if products are in the collections
+    if (event.eventType === "collections" && event.collections) {
+      const eventCollections = JSON.parse(event.collections) as string[];
+
+      for (const lineItem of orderLineItems) {
+        // Check if this product is in any of the event collections
+        const isInEventCollection = lineItem.collections.some((collectionId) =>
+          eventCollections.includes(collectionId),
+        );
+
+        if (isInEventCollection) {
+          const lineItemTotal = lineItem.price * lineItem.quantity;
+          eventBonusPoints += (lineItemTotal * event.bonusPercentage) / 100;
+        }
+      }
     }
 
     // For product-specific events, check if any products match
-    if (
-      event.eventType === "product-specific" &&
-      event.productIds &&
-      productIds
-    ) {
+    if (event.eventType === "product-specific" && event.productIds) {
       const eventProductIds = JSON.parse(event.productIds) as string[];
 
-      // Find matching products
-      const matchingProducts = productIds.filter((id) =>
-        eventProductIds.includes(id),
-      );
-
-      if (matchingProducts.length > 0) {
-        // For simplicity, apply to the entire purchase amount
-        // In a real implementation, you would calculate the amount for matching products only
-        bonusPoints += (purchaseAmount * event.bonusPercentage) / 100;
+      for (const lineItem of orderLineItems) {
+        if (eventProductIds.includes(lineItem.productId)) {
+          const lineItemTotal = lineItem.price * lineItem.quantity;
+          eventBonusPoints += (lineItemTotal * event.bonusPercentage) / 100;
+        }
       }
+    }
+
+    if (eventBonusPoints > 0) {
+      // Round up bonus points as per user requirement
+      const roundedPoints = Math.ceil(eventBonusPoints);
+      totalBonusPoints += roundedPoints;
+      appliedEvents.push({ eventId: event.id, pointsAwarded: roundedPoints });
+
+      // Update event statistics
+      await updatePointEventStats(event.id, roundedPoints);
     }
   }
 
-  return Math.round(bonusPoints * 100) / 100; // Round to 2 decimal places
+  return {
+    totalBonusPoints,
+    appliedEvents,
+  };
 }

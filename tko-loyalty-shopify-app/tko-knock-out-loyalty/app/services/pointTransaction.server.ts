@@ -52,6 +52,36 @@ export async function getEventPointTransactions(eventId: string) {
 }
 
 /**
+ * Create a new point transaction (generic function)
+ */
+export async function createPointTransaction({
+  customerId,
+  type,
+  amount,
+  orderId,
+  eventId,
+  description,
+}: {
+  customerId: string;
+  type: "earn" | "spend" | "bonus";
+  amount: number;
+  orderId?: string;
+  eventId?: string;
+  description?: string;
+}) {
+  return prisma.pointTransaction.create({
+    data: {
+      customerId,
+      type,
+      amount,
+      orderId,
+      eventId,
+      description,
+    },
+  });
+}
+
+/**
  * Create a new spend points transaction
  */
 export async function createSpendPointsTransaction({
@@ -155,6 +185,70 @@ export async function getCustomerPointsSummary(customerId: string) {
     bonusPoints: Number(bonusPointsTotal),
     totalPoints: Number(spendPointsTotal) + Number(bonusPointsTotal),
   };
+}
+
+/**
+ * Manually adjust customer bonus points (for admin use)
+ */
+export async function adjustCustomerBonusPoints({
+  customerId,
+  amount,
+  reason,
+  admin,
+}: {
+  customerId: string;
+  amount: number; // Can be positive (add) or negative (subtract)
+  reason: string;
+  admin?: any; // Optional Shopify admin API context for metafield updates
+}) {
+  // Create the adjustment transaction
+  const transaction = await prisma.pointTransaction.create({
+    data: {
+      customerId,
+      type: "bonus",
+      amount,
+      description: `Manual adjustment: ${reason}`,
+    },
+    include: {
+      customer: true,
+    },
+  });
+
+  // Update the customer's bonus points
+  const customer = await prisma.customer.findUnique({
+    where: { id: customerId },
+  });
+
+  if (customer) {
+    // We need to cast customer to include bonusPoints since TypeScript doesn't recognize it
+    const typedCustomer = customer as unknown as { bonusPoints: number };
+    const newBonusPoints = (typedCustomer.bonusPoints || 0) + amount;
+
+    // Ensure bonus points don't go below 0
+    const finalBonusPoints = Math.max(0, newBonusPoints);
+
+    await updateCustomerBonusPoints(customerId, finalBonusPoints, admin);
+  }
+
+  return transaction;
+}
+
+/**
+ * Get bonus point transactions only for a specific customer
+ */
+export async function getCustomerBonusPointTransactions(customerId: string) {
+  return prisma.pointTransaction.findMany({
+    where: {
+      customerId,
+      type: "bonus",
+    },
+    include: {
+      event: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
 }
 
 /**

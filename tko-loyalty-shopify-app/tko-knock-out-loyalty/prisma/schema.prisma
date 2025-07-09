@@ -33,8 +33,8 @@ model Tier {
   maxPoints   Float?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
-  benefits    TierBenefit[]
   customers   Customer[]
+  benefits    TierBenefit[]
 }
 
 model TierBenefit {
@@ -64,6 +64,7 @@ model Customer {
   totalPoints   Float              @default(0)
   tier          Tier?              @relation(fields: [tierId], references: [id])
   transactions  PointTransaction[]
+  pendingOrders PendingOrder[]
 
   @@index([totalPoints])
   @@map("Customer")
@@ -75,9 +76,11 @@ model PointEvent {
   description     String?
   startDate       DateTime
   endDate         DateTime
-  eventType       String    // "category" or "product-specific"
-  tags            String?   // JSON array of tags for category-based events (AND logic)
-  productIds      String?   // JSON array of product IDs for product-specific events
+  eventType       String
+  tags            String?
+  collections     String?
+  productIds      String?
+  channel         String             @default("both")
   bonusPercentage Float
   isActive        Boolean            @default(true)
   createdAt       DateTime           @default(now())
@@ -105,4 +108,18 @@ model PointTransaction {
   @@index([customerId])
   @@index([eventId])
   @@map("PointTransaction")
+}
+
+model PendingOrder {
+  id              String   @id @default(uuid())
+  shopifyOrderId  String   @unique
+  customerId      String
+  orderData       String   // JSON string of order data
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([shopifyOrderId])
+  @@index([customerId])
+  @@map("PendingOrder")
 }

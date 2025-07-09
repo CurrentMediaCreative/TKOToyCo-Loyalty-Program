@@ -11,7 +11,7 @@ import {
   isBinderPOSOrder,
 } from "../services/collections.server";
 import {
-  addPendingOrder,
+  getPendingOrder,
   removePendingOrder,
 } from "../services/pendingOrder.server";
 
@@ -254,7 +254,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const orderData: ShopifyOrder = await request.json();
 
     console.log(
-      `Processing order ${orderData.id} for customer ${orderData.customer?.id}`,
+      `Processing fulfilled order ${orderData.id} for customer ${orderData.customer?.id}`,
     );
 
     // Skip test orders
@@ -271,23 +271,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const orderId = orderData.id.toString();
 
-    // Check fulfillment status
-    const isFulfilled = orderData.fulfillment_status === "fulfilled";
+    try {
+      // Check if this order was in the pending queue
+      const pendingOrder = await getPendingOrder(orderId);
 
-    if (isFulfilled) {
-      // Process fulfilled order immediately
-      try {
-        // Remove from pending orders if it exists
-        await removePendingOrder(orderId);
+      if (pendingOrder) {
+        console.log(`Found pending order ${orderId}, processing now`);
+
+        // Use the original order data from when it was created
+        const originalOrderData = JSON.parse(
+          pendingOrder.orderData,
+        ) as ShopifyOrder;
 
         // Process the order
-        const result = await processFulfilledOrder(orderData, admin);
+        const result = await processFulfilledOrder(originalOrderData, admin);
+
+        // Remove from pending orders
+        await removePendingOrder(orderId);
 
         return new Response(
           JSON.stringify({
             success: true,
             orderId,
-            status: "fulfilled",
+            status: "fulfilled_from_pending",
             pointsAwarded: result,
           }),
           {
@@ -297,48 +303,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             },
           },
         );
-      } catch (error) {
-        console.error(`Error processing fulfilled order ${orderId}:`, error);
-        return new Response("Error processing fulfilled order", {
-          status: 500,
-        });
-      }
-    } else {
-      // Add to pending orders queue
-      try {
-        // Get or create customer first to get the customer ID
-        let loyaltyCustomer = await getCustomerByShopifyId(
-          orderData.customer.id,
-        );
-
-        if (!loyaltyCustomer) {
-          loyaltyCustomer = await createOrUpdateCustomer({
-            shopifyId: orderData.customer.id,
-            email: orderData.customer.email,
-            firstName: orderData.customer.first_name,
-            lastName: orderData.customer.last_name,
-            totalSpend: parseFloat(orderData.customer.total_spent),
-            lastOrderDate: new Date(orderData.created_at),
-            admin,
-          });
-        }
-
-        await addPendingOrder({
-          shopifyOrderId: orderId,
-          customerId: loyaltyCustomer.id,
-          orderData,
-        });
-
+      } else {
+        // Order wasn't in pending queue, process directly
         console.log(
-          `Order ${orderId} added to pending queue (fulfillment status: ${orderData.fulfillment_status})`,
+          `Order ${orderId} not found in pending queue, processing directly`,
         );
+
+        const result = await processFulfilledOrder(orderData, admin);
 
         return new Response(
           JSON.stringify({
             success: true,
             orderId,
-            status: "pending",
-            fulfillmentStatus: orderData.fulfillment_status,
+            status: "fulfilled_direct",
+            pointsAwarded: result,
           }),
           {
             status: 200,
@@ -347,13 +325,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             },
           },
         );
-      } catch (error) {
-        console.error(`Error adding order ${orderId} to pending queue:`, error);
-        return new Response("Error adding to pending queue", { status: 500 });
       }
+    } catch (error) {
+      console.error(`Error processing fulfilled order ${orderId}:`, error);
+      return new Response("Error processing fulfilled order", {
+        status: 500,
+      });
     }
   } catch (error) {
-    console.error("Error processing order webhook:", error);
+    console.error("Error processing order fulfillment webhook:", error);
     return new Response("Webhook processing failed", { status: 500 });
   }
 };

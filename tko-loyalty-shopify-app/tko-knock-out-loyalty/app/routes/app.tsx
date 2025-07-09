@@ -28,8 +28,6 @@ export default function App() {
         <Link to="/app/tiers">Tiers</Link>
         <Link to="/app/rewards">Rewards</Link>
         <Link to="/app/events">Point Events</Link>
-        <Link to="/app/points-calculator">Points Calculator</Link>
-        <Link to="/app/product-types">Product Types</Link>
         <Link to="/app/reports">Reports</Link>
       </NavMenu>
       <Outlet />

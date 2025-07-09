@@ -62,11 +62,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const endDate = new Date(formData.get("endDate") as string);
       const eventType = formData.get("eventType") as
         | "store-wide"
+        | "collections"
         | "product-specific";
+      const channel = formData.get("channel") as "online" | "instore" | "both";
       const bonusPercentage = parseFloat(
         formData.get("bonusPercentage") as string,
       );
       const isActive = formData.get("isActive") === "true";
+
+      // Handle collections for collection-based events
+      let collections: string[] | undefined;
+      if (eventType === "collections") {
+        const collectionsString = formData.get("collections") as string;
+        if (collectionsString) {
+          collections = collectionsString.split(",").map((id) => id.trim());
+        }
+      }
 
       // Handle product IDs for product-specific events
       let productIds: string[] | undefined;
@@ -83,7 +94,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         startDate,
         endDate,
         eventType,
+        collections,
         productIds,
+        channel,
         bonusPercentage,
         isActive,
       });
@@ -99,11 +112,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const endDate = new Date(formData.get("endDate") as string);
       const eventType = formData.get("eventType") as
         | "store-wide"
+        | "collections"
         | "product-specific";
+      const channel = formData.get("channel") as "online" | "instore" | "both";
       const bonusPercentage = parseFloat(
         formData.get("bonusPercentage") as string,
       );
       const isActive = formData.get("isActive") === "true";
+
+      // Handle collections for collection-based events
+      let collections: string[] | undefined;
+      if (eventType === "collections") {
+        const collectionsString = formData.get("collections") as string;
+        if (collectionsString) {
+          collections = collectionsString.split(",").map((id) => id.trim());
+        }
+      }
 
       // Handle product IDs for product-specific events
       let productIds: string[] | undefined;
@@ -121,7 +145,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         startDate,
         endDate,
         eventType,
+        collections,
         productIds,
+        channel,
         bonusPercentage,
         isActive,
       });
@@ -194,7 +220,7 @@ export default function EventsPage() {
       description: "",
       startDate: new Date(),
       endDate: new Date(new Date().setDate(new Date().getDate() + 7)),
-      eventType: "store-wide",
+      eventType: "collections",
       productIds: [],
       bonusPercentage: 10,
       isActive: true,
@@ -267,11 +293,22 @@ export default function EventsPage() {
       formData.append("isActive", editingEvent.isActive.toString());
 
       if (
+        editingEvent.eventType === "collections" &&
+        editingEvent.collections &&
+        editingEvent.collections.length > 0
+      ) {
+        formData.append("collections", editingEvent.collections.join(","));
+      }
+
+      if (
         editingEvent.eventType === "product-specific" &&
+        editingEvent.productIds &&
         editingEvent.productIds.length > 0
       ) {
         formData.append("productIds", editingEvent.productIds.join(","));
       }
+
+      formData.append("channel", editingEvent.channel || "both");
 
       submit(formData, { method: "post" });
       setIsModalOpen(false);
@@ -504,6 +541,7 @@ export default function EventsPage() {
                 label="Event Type"
                 options={[
                   { label: "Store-wide", value: "store-wide" },
+                  { label: "Collection-based", value: "collections" },
                   { label: "Product-specific", value: "product-specific" },
                 ]}
                 value={editingEvent.eventType}
@@ -512,10 +550,28 @@ export default function EventsPage() {
                 }
               />
 
+              {editingEvent.eventType === "collections" && (
+                <TextField
+                  label="Collection IDs"
+                  value={editingEvent.collections?.join(", ") || ""}
+                  onChange={(value) =>
+                    setEditingEvent({
+                      ...editingEvent,
+                      collections: value
+                        .split(",")
+                        .map((id: string) => id.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  helpText="Enter comma-separated collection IDs (e.g., 123456789, 987654321)"
+                  autoComplete="off"
+                />
+              )}
+
               {editingEvent.eventType === "product-specific" && (
                 <TextField
                   label="Product IDs"
-                  value={editingEvent.productIds.join(", ")}
+                  value={editingEvent.productIds?.join(", ") || ""}
                   onChange={(value) =>
                     setEditingEvent({
                       ...editingEvent,
@@ -525,10 +581,23 @@ export default function EventsPage() {
                         .filter(Boolean),
                     })
                   }
-                  helpText="Enter comma-separated product IDs"
+                  helpText="Enter comma-separated product IDs (e.g., 123456789, 987654321)"
                   autoComplete="off"
                 />
               )}
+
+              <Select
+                label="Channel"
+                options={[
+                  { label: "Both Online & In-store", value: "both" },
+                  { label: "Online Only", value: "online" },
+                  { label: "In-store Only", value: "instore" },
+                ]}
+                value={editingEvent.channel || "both"}
+                onChange={(value) =>
+                  setEditingEvent({ ...editingEvent, channel: value })
+                }
+              />
 
               <TextField
                 label="Bonus Percentage"
