@@ -81,7 +81,8 @@ model PointEvent {
   description     String?
   startDate       DateTime
   endDate         DateTime
-  eventType       String    // "store-wide" or "product-specific"
+  eventType       String    // "category" or "product-specific"
+  tags            String?   // JSON array of tags for category-based events (AND logic)
   productIds      String?   // JSON array of product IDs for product-specific events
   bonusPercentage Float
   isActive        Boolean   @default(true)
