@@ -497,7 +497,7 @@ export default function Index() {
         <Layout>
           <Layout.Section>
             <Card>
-              <BlockStack gap="400">
+              <BlockStack gap="200">
                 <Text variant="headingMd" as="h2">
                   Error Loading Dashboard
                 </Text>
@@ -519,9 +519,9 @@ export default function Index() {
         />
       )}
 
-      <BlockStack gap="600">
+      <BlockStack gap="400">
         {/* Header Section */}
-        <Box paddingBlockEnd="400">
+        <Box paddingBlockEnd="200">
           <BlockStack gap="200">
             <InlineStack align="space-between" blockAlign="center">
               <BlockStack gap="100">
@@ -529,7 +529,7 @@ export default function Index() {
                   🥊 TKO Loyalty Program
                 </Text>
                 <Text variant="bodyLg" as="p" tone="subdued">
-                  Admin Dashboard - Championship Performance Overview
+                  Admin Dashboard
                 </Text>
               </BlockStack>
               <InlineStack gap="300">
@@ -627,7 +627,7 @@ export default function Index() {
                   <BlockStack gap="300">
                     <InlineStack align="space-between" blockAlign="start">
                       <Text variant="headingSm" as="h3" tone="subdued">
-                        Championship Earnings
+                        Revenue
                       </Text>
                       <InlineStack gap="100">
                         <Button
@@ -767,11 +767,11 @@ export default function Index() {
             <Grid>
               <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
                 <Card>
-                  <BlockStack gap="400">
+                  <BlockStack gap="300">
                     <InlineStack align="space-between" blockAlign="center">
                       <BlockStack gap="100">
                         <Text as="h3" variant="headingMd">
-                          🏆 Today's Championship Leaderboard
+                          🏆 Today's Top Contenders
                         </Text>
                         <Text variant="bodySm" as="p" tone="subdued">
                           Top performers in today's competition
@@ -798,8 +798,8 @@ export default function Index() {
                         headings={[
                           "Fighter",
                           "Weight Class",
-                          "Today's Earnings",
-                          "Total Bouts",
+                          "Total Spent",
+                          "Total Orders",
                           "Actions",
                         ]}
                         rows={todayCompetitorRows}
@@ -822,11 +822,11 @@ export default function Index() {
 
               <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
                 <Card>
-                  <BlockStack gap="400">
+                  <BlockStack gap="300">
                     <InlineStack align="space-between" blockAlign="center">
                       <BlockStack gap="100">
                         <Text as="h3" variant="headingMd">
-                          🥇 Monthly Championship Rankings
+                          🥇 Monthly Top Contenders
                         </Text>
                         <Text variant="bodySm" as="p" tone="subdued">
                           This month's top contenders
@@ -853,8 +853,8 @@ export default function Index() {
                         headings={[
                           "Fighter",
                           "Weight Class",
-                          "Monthly Earnings",
-                          "Total Bouts",
+                          "Total Spent",
+                          "Total Orders",
                           "Actions",
                         ]}
                         rows={monthCompetitorRows}
