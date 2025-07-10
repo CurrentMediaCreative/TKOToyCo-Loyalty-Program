@@ -771,7 +771,7 @@ export default function Index() {
                     <InlineStack align="space-between" blockAlign="center">
                       <BlockStack gap="100">
                         <Text as="h3" variant="headingMd">
-                          🏆 Today's Top Contenders
+                          🥇 Today's Top Contenders
                         </Text>
                         <Text variant="bodySm" as="p" tone="subdued">
                           Today's top contenders
@@ -826,7 +826,7 @@ export default function Index() {
                     <InlineStack align="space-between" blockAlign="center">
                       <BlockStack gap="100">
                         <Text as="h3" variant="headingMd">
-                          🥇 Monthly Top Contenders
+                          🏆 Monthly Top Contenders
                         </Text>
                         <Text variant="bodySm" as="p" tone="subdued">
                           This month's top contenders
