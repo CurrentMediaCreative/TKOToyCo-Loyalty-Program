@@ -1,0 +1,461 @@
+{% comment %}
+  TKO Loyalty Cart Display Block
+  Shows customer's loyalty status with gaming-style progress bar and detailed cart calculations
+{% endcomment %}
+
+<div class="tko-loyalty-display" data-loyalty-block>
+  <style>
+    .tko-loyalty-display {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      border: 2px solid #ff6b35;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      box-shadow: 0 4px 15px rgba(255, 107, 53, 0.2);
+    }
+
+    .tko-loyalty-title {
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin-bottom: 20px;
+      color: #ff6b35;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Customer Info Section */
+    .tko-customer-info {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-left: 4px solid #ff6b35;
+    }
+
+    .tko-customer-name {
+      font-size: 1.3rem;
+      font-weight: bold;
+      color: #ffffff;
+      margin-bottom: 10px;
+    }
+
+    .tko-customer-tier {
+      display: inline-block;
+      background: #ff6b35;
+      color: #ffffff;
+      padding: 6px 15px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 15px;
+    }
+
+    .tko-points-display {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #ff6b35;
+      margin-bottom: 15px;
+    }
+
+    /* Progress Bar (Gaming Style) */
+    .tko-progress-container {
+      margin-bottom: 10px;
+    }
+
+    .tko-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      color: #cccccc;
+      margin-bottom: 8px;
+    }
+
+    .tko-progress-bar {
+      width: 100%;
+      height: 20px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid #444;
+      position: relative;
+    }
+
+    .tko-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #ff6b35 0%, #ff8c42 50%, #ffaa5e 100%);
+      border-radius: 8px;
+      transition: width 0.8s ease-in-out;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tko-progress-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+      animation: shimmer 2s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    .tko-progress-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 0.8rem;
+      font-weight: bold;
+      color: #ffffff;
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Cart Calculations Section */
+    .tko-cart-section {
+      background: rgba(255, 107, 53, 0.1);
+      border: 1px solid #ff6b35;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+
+    .tko-cart-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #ff6b35;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .tko-cart-breakdown {
+      display: grid;
+      gap: 12px;
+    }
+
+    .tko-cart-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .tko-cart-row:last-child {
+      border-bottom: none;
+      border-top: 2px solid #ff6b35;
+      padding-top: 12px;
+      margin-top: 8px;
+      font-weight: bold;
+      font-size: 1.1rem;
+    }
+
+    .tko-cart-label {
+      color: #cccccc;
+      font-size: 0.95rem;
+    }
+
+    .tko-cart-value {
+      color: #ff6b35;
+      font-weight: bold;
+      font-size: 1rem;
+    }
+
+    .tko-cart-total .tko-cart-value {
+      font-size: 1.2rem;
+      color: #ffffff;
+    }
+
+    /* Loading and Error States */
+    .tko-loyalty-loading {
+      text-align: center;
+      padding: 40px 20px;
+      color: #cccccc;
+    }
+
+    .tko-loyalty-error {
+      text-align: center;
+      padding: 20px;
+      color: #ff6b6b;
+      background: rgba(255, 107, 107, 0.1);
+      border-radius: 6px;
+    }
+
+    /* Guest User Section */
+    .tko-guest-section {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      border-left: 4px solid #ff6b35;
+    }
+
+    .tko-guest-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #ff6b35;
+      margin-bottom: 10px;
+    }
+
+    .tko-guest-message {
+      color: #cccccc;
+      margin-bottom: 15px;
+      line-height: 1.4;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .tko-loyalty-display {
+        padding: 15px;
+        margin: 15px 0;
+      }
+      
+      .tko-loyalty-title {
+        font-size: 1.3rem;
+      }
+      
+      .tko-customer-name {
+        font-size: 1.1rem;
+      }
+      
+      .tko-points-display {
+        font-size: 1.5rem;
+      }
+      
+      .tko-cart-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+    }
+  </style>
+
+  <div class="tko-loyalty-title">
+    {{ block.settings.title | default: "Your Loyalty Status" }}
+  </div>
+
+  <div id="tko-loyalty-content" class="tko-loyalty-content">
+    <div class="tko-loyalty-loading">
+      Loading your loyalty information...
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // Tier thresholds for progress calculation
+      const TIER_THRESHOLDS = {
+        'Featherweight': { min: 0, max: 1500 },
+        'Lightweight': { min: 1500, max: 5000 },
+        'Welterweight': { min: 5000, max: 25000 },
+        'Heavyweight': { min: 25000, max: 50000 },
+        'Reigning Champion': { min: 50000, max: 50000 } // Max tier
+      };
+
+      // Get cart total for points calculation
+      function getCartTotal() {
+        if (window.Shopify && window.Shopify.cart) {
+          return window.Shopify.cart.total_price / 100; // Convert from cents
+        }
+        
+        // Fallback: try to get from cart object
+        if (typeof cart !== 'undefined' && cart.total_price) {
+          return cart.total_price / 100;
+        }
+        
+        // Last resort: parse from page
+        const cartTotalElement = document.querySelector('[data-cart-total], .cart__total-price, .cart-total');
+        if (cartTotalElement) {
+          const totalText = cartTotalElement.textContent || cartTotalElement.innerText;
+          const match = totalText.match(/[\d,]+\.?\d*/);
+          return match ? parseFloat(match[0].replace(',', '')) : 0;
+        }
+        
+        return 0;
+      }
+
+      // Calculate tier progress
+      function calculateTierProgress(currentPoints, tierName) {
+        const tier = TIER_THRESHOLDS[tierName];
+        if (!tier) return { percentage: 0, current: 0, needed: 0, nextTier: null };
+
+        if (tierName === 'Reigning Champion') {
+          return { 
+            percentage: 100, 
+            current: currentPoints, 
+            needed: 0, 
+            nextTier: null 
+          };
+        }
+
+        const tierNames = Object.keys(TIER_THRESHOLDS);
+        const currentTierIndex = tierNames.indexOf(tierName);
+        const nextTierName = tierNames[currentTierIndex + 1];
+        
+        if (!nextTierName) {
+          return { percentage: 100, current: currentPoints, needed: 0, nextTier: null };
+        }
+
+        const nextTierThreshold = TIER_THRESHOLDS[nextTierName].min;
+        const currentTierThreshold = tier.min;
+        const tierRange = nextTierThreshold - currentTierThreshold;
+        const progressInTier = currentPoints - currentTierThreshold;
+        const percentage = Math.min(100, Math.max(0, (progressInTier / tierRange) * 100));
+
+        return {
+          percentage: percentage,
+          current: currentPoints,
+          needed: Math.max(0, nextTierThreshold - currentPoints),
+          nextTier: nextTierName
+        };
+      }
+
+      // Fetch loyalty data from our API
+      async function loadLoyaltyData() {
+        try {
+          const cartTotal = getCartTotal();
+          const response = await fetch(`/apps/tko-loyalty/api/public/calculate-points?cartTotal=${cartTotal}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to load loyalty data');
+          }
+
+          const data = await response.json();
+          displayLoyaltyData(data, cartTotal);
+        } catch (error) {
+          console.error('Error loading loyalty data:', error);
+          displayError();
+        }
+      }
+
+      // Display the loyalty data
+      function displayLoyaltyData(data, cartTotal) {
+        const container = document.getElementById('tko-loyalty-content');
+        let html = '';
+
+        if (data.customer) {
+          // Customer info section
+          const tierProgress = calculateTierProgress(data.customer.totalPoints, data.customer.tier);
+          
+          html += `
+            <div class="tko-customer-info">
+              <div class="tko-customer-name">${data.customer.name || 'Valued Customer'}</div>
+              <div class="tko-customer-tier">${data.customer.tier}</div>
+              <div class="tko-points-display">${data.customer.totalPoints.toLocaleString()} Points</div>
+              
+              <div class="tko-progress-container">
+                <div class="tko-progress-label">
+                  <span>Progress to ${tierProgress.nextTier || 'Max Level'}</span>
+                  <span>${tierProgress.percentage.toFixed(1)}%</span>
+                </div>
+                <div class="tko-progress-bar">
+                  <div class="tko-progress-fill" style="width: ${tierProgress.percentage}%"></div>
+                  <div class="tko-progress-text">${tierProgress.percentage.toFixed(1)}%</div>
+                </div>
+                ${tierProgress.nextTier ? `<div style="font-size: 0.8rem; color: #cccccc; margin-top: 5px; text-align: center;">
+                  ${tierProgress.needed.toLocaleString()} points to ${tierProgress.nextTier}
+                </div>` : '<div style="font-size: 0.8rem; color: #ff6b35; margin-top: 5px; text-align: center;">Maximum tier achieved!</div>'}
+              </div>
+            </div>
+          `;
+
+          // Cart calculations section
+          if (cartTotal > 0) {
+            const basePoints = Math.floor(cartTotal);
+            const bonusPoints = data.bonusPointsFromCart || 0;
+            const totalCartPoints = basePoints + bonusPoints;
+
+            html += `
+              <div class="tko-cart-section">
+                <div class="tko-cart-title">Points From This Cart</div>
+                <div class="tko-cart-breakdown">
+                  <div class="tko-cart-row">
+                    <span class="tko-cart-label">Base Points (from $${cartTotal.toFixed(2)})</span>
+                    <span class="tko-cart-value">+${basePoints.toLocaleString()}</span>
+                  </div>
+                  ${bonusPoints > 0 ? `
+                    <div class="tko-cart-row">
+                      <span class="tko-cart-label">Bonus Points (from events)</span>
+                      <span class="tko-cart-value">+${bonusPoints.toLocaleString()}</span>
+                    </div>
+                  ` : ''}
+                  <div class="tko-cart-row tko-cart-total">
+                    <span class="tko-cart-label">Total Points You'll Earn</span>
+                    <span class="tko-cart-value">+${totalCartPoints.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+        } else {
+          // Guest user section
+          const basePoints = cartTotal > 0 ? Math.floor(cartTotal) : 0;
+          
+          html += `
+            <div class="tko-guest-section">
+              <div class="tko-guest-title">Join Our Loyalty Program</div>
+              <div class="tko-guest-message">
+                Create an account to start earning points and unlock exclusive rewards!
+              </div>
+              ${cartTotal > 0 ? `
+                <div class="tko-cart-section">
+                  <div class="tko-cart-title">Points You Could Earn</div>
+                  <div class="tko-cart-breakdown">
+                    <div class="tko-cart-row tko-cart-total">
+                      <span class="tko-cart-label">Sign up and earn from this cart</span>
+                      <span class="tko-cart-value">+${basePoints.toLocaleString()} points</span>
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+
+        container.innerHTML = html;
+      }
+
+      // Display error message
+      function displayError() {
+        const container = document.getElementById('tko-loyalty-content');
+        container.innerHTML = `
+          <div class="tko-loyalty-error">
+            Unable to load loyalty information at this time.
+          </div>
+        `;
+      }
+
+      // Initialize when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadLoyaltyData);
+      } else {
+        loadLoyaltyData();
+      }
+
+      // Reload when cart updates (if Shopify cart events are available)
+      if (window.Shopify && window.Shopify.onCartUpdate) {
+        window.Shopify.onCartUpdate = function(cart) {
+          loadLoyaltyData();
+        };
+      }
+
+      // Listen for cart update events
+      document.addEventListener('cart:updated', loadLoyaltyData);
+      document.addEventListener('cart:changed', loadLoyaltyData);
+    })();
+  </script>
+</div>
