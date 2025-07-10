@@ -36,8 +36,6 @@ import { getEventPointTransactions } from "../services/pointTransaction.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
-  const url = new URL(request.url);
-  const eventId = url.searchParams.get("eventId");
 
   try {
     // Load events
@@ -65,19 +63,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       handle: edge.node.handle,
     }));
 
-    // Load transactions for specific event if requested
-    let eventTransactions = null;
-    if (eventId) {
-      eventTransactions = await getEventPointTransactions(eventId);
-    }
-
-    return json({ events, collections, eventTransactions });
+    return json({ events, collections });
   } catch (error) {
     console.error("Error loading data:", error);
     return json({
       events: [],
       collections: [],
-      eventTransactions: null,
       error: "Failed to load data. Please try again later.",
     });
   }
@@ -89,6 +80,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const action = formData.get("action") as string;
 
   try {
+    if (action === "getEventTransactions") {
+      const eventId = formData.get("eventId") as string;
+      const eventTransactions = await getEventPointTransactions(eventId);
+      return json({ eventTransactions });
+    }
+
     if (action === "createEvent") {
       const name = formData.get("name") as string;
       const description = formData.get("description") as string;
@@ -213,18 +210,18 @@ interface Product {
 }
 
 export default function EventsPage() {
-  const {
-    events = [],
-    collections = [],
-    eventTransactions = null,
-  } = useLoaderData<typeof loader>();
+  const { events = [], collections = [] } = useLoaderData<typeof loader>();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isTransactionsModalOpen, setIsTransactionsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const [viewingEventId, setViewingEventId] = useState<string | null>(null);
+  const [eventTransactions, setEventTransactions] = useState<any[] | null>(
+    null,
+  );
   const submit = useSubmit();
+  const transactionsFetcher = useFetcher();
 
   // Collections state
   const [selectedCollections, setSelectedCollections] = useState<Collection[]>(
@@ -327,22 +324,27 @@ export default function EventsPage() {
 
   const handleViewTransactions = (eventId: string) => {
     setViewingEventId(eventId);
+    setEventTransactions(null); // Clear previous data
+
     // Use fetcher to load transactions for this event
-    window.location.href = `?eventId=${eventId}`;
+    const formData = new FormData();
+    formData.append("action", "getEventTransactions");
+    formData.append("eventId", eventId);
+
+    transactionsFetcher.submit(formData, { method: "post" });
   };
 
   // Handle opening transactions modal when data is loaded
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const eventId = url.searchParams.get("eventId");
-    if (eventId && eventTransactions) {
-      setViewingEventId(eventId);
+    if (
+      transactionsFetcher.data &&
+      typeof transactionsFetcher.data === "object" &&
+      "eventTransactions" in transactionsFetcher.data
+    ) {
+      setEventTransactions((transactionsFetcher.data as any).eventTransactions);
       setIsTransactionsModalOpen(true);
-      // Clear the URL parameter
-      url.searchParams.delete("eventId");
-      window.history.replaceState({}, "", url.toString());
     }
-  }, [eventTransactions]);
+  }, [transactionsFetcher.data]);
 
   const handleSaveEvent = () => {
     if (editingEvent) {
