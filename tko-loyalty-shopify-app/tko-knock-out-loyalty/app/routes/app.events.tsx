@@ -33,6 +33,7 @@ import {
   deletePointEvent,
 } from "../services/pointEvent.server";
 import { getEventPointTransactions } from "../services/pointTransaction.server";
+import { serializeTransactionData } from "../utils/serialization";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -83,7 +84,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (action === "getEventTransactions") {
       const eventId = formData.get("eventId") as string;
       const eventTransactions = await getEventPointTransactions(eventId);
-      return json({ eventTransactions });
+      const serializedTransactions =
+        serializeTransactionData(eventTransactions);
+      return json({ eventTransactions: serializedTransactions });
     }
 
     if (action === "createEvent") {
@@ -565,13 +568,7 @@ export default function EventsPage() {
 
   return (
     <Page fullWidth>
-      <TitleBar
-        title="Bonus Point Events"
-        primaryAction={{
-          content: "Create Event",
-          onAction: handleCreateEvent,
-        }}
-      />
+      <TitleBar title="Bonus Point Events" />
       <Layout>
         <Layout.Section>
           <BlockStack gap="500">
