@@ -459,3 +459,36 @@
     })();
   </script>
 </div>
+
+{% schema %}
+{
+  "name": "TKO Loyalty Display",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Title",
+      "default": "Your Loyalty Status"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_breakdown",
+      "label": "Show Points Breakdown",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_tier",
+      "label": "Show Tier Information",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_points_to_earn",
+      "label": "Show Points to Earn",
+      "default": true
+    }
+  ]
+}
+{% endschema %}
