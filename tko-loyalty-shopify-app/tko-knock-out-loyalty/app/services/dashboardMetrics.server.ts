@@ -221,7 +221,7 @@ export class DashboardMetricsService {
       },
       _sum: { totalSpend: true },
     });
-    return result._sum.totalSpent || 0;
+    return result._sum.totalSpend || 0;
   }
 
   /**
