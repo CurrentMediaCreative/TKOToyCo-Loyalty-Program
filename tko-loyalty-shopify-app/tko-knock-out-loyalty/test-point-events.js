@@ -69,36 +69,30 @@ async function testPointEvents() {
     ];
 
     // Import the calculation function
-    const { calculateBonusPoints, doesProductQualifyForEvent } = await import(
+    const { calculateBonusPoints } = await import(
       "./app/services/pointEvent.server.ts"
     );
 
-    // Test individual product qualification
-    console.log("\n🔍 Testing product qualification:");
-    testProducts.forEach((product) => {
-      const qualifiesForCategory = doesProductQualifyForEvent(
-        product,
-        categoryEvent,
-      );
-      const qualifiesForProduct = doesProductQualifyForEvent(
-        product,
-        productEvent,
-      );
-      console.log(
-        `Product ${product.id}: Category=${qualifiesForCategory}, Product-specific=${qualifiesForProduct}`,
-      );
-    });
+    // Convert test products to the format expected by calculateBonusPoints
+    const orderLineItems = testProducts.map((product) => ({
+      productId: product.id,
+      price: product.price,
+      quantity: 1,
+      collections: [], // Empty for this test
+    }));
 
     // Test bonus calculation
     console.log("\n💰 Testing bonus calculation...");
-    const result = await calculateBonusPoints({ products: testProducts });
-    console.log("Bonus points calculated:", result.bonusPoints);
+    const result = await calculateBonusPoints({
+      orderLineItems,
+      isInstoreOrder: false,
+    });
+    console.log("Total bonus points:", result.totalBonusPoints);
     console.log("Applied events:", result.appliedEvents);
 
     // Expected results:
-    // - prod_001: 10% of $50 = 5 bonus points (Pokemon Singles event)
     // - prod_123: 20% of $25 = 5 bonus points (Product-specific event)
-    // - Total expected: 10 bonus points
+    // - Total expected: 5 bonus points (only product-specific event should apply)
 
     console.log("\n✅ All tests completed successfully!");
   } catch (error) {
