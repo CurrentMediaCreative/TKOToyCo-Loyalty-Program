@@ -126,10 +126,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     const customers = await fetchAllCustomers();
 
-    // Calculate spending for different time periods
-    const today = new Date();
-    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
+    // Calculate spending for different time periods using EST timezone
+    const now = new Date();
+
+    // Convert to EST (UTC-5) or EDT (UTC-4) - JavaScript handles DST automatically
+    const estOffset = -5 * 60; // EST is UTC-5
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    const estTime = new Date(utc + estOffset * 60000);
+
+    // Use EST time for "today" calculations
+    const today = new Date(
+      estTime.getFullYear(),
+      estTime.getMonth(),
+      estTime.getDate(),
+    );
+    const firstDayOfMonth = new Date(
+      estTime.getFullYear(),
+      estTime.getMonth(),
+      1,
+    );
+    const firstDayOfYear = new Date(estTime.getFullYear(), 0, 1);
 
     // Calculate total spent (all time)
     const totalSpent = customers.reduce(
@@ -216,8 +232,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     });
 
-    // Set hours to beginning of day for consistent comparison
-    today.setHours(0, 0, 0, 0);
+    // Today is already set to beginning of day in EST
+    // No need to modify hours since we created it from EST date components
 
     // Process customers to add today's and this month's spending
     const processedCustomers = customerTiers.map((customer: any) => {
@@ -225,10 +241,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const orders =
         customer.orders?.edges?.map((edge: any) => edge.node) || [];
 
-      // Calculate today's spending
+      // Calculate today's spending (EST timezone)
       const todaySpending = orders.reduce((sum: number, order: any) => {
         const orderDate = new Date(order.createdAt);
-        if (orderDate >= today) {
+
+        // Convert order date to EST for comparison
+        const orderUtc =
+          orderDate.getTime() + orderDate.getTimezoneOffset() * 60000;
+        const orderEst = new Date(orderUtc + estOffset * 60000);
+        const orderEstDate = new Date(
+          orderEst.getFullYear(),
+          orderEst.getMonth(),
+          orderEst.getDate(),
+        );
+
+        if (orderEstDate.getTime() >= today.getTime()) {
           return (
             sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
           );
