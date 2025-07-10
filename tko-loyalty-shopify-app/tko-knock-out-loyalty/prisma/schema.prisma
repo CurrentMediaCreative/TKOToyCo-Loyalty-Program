@@ -53,7 +53,9 @@ model Customer {
   email         String?
   firstName     String?
   lastName      String?
+  phone         String?
   totalSpend    Float              @default(0)
+  numberOfOrders Int               @default(0)
   tierId        String?
   metafieldId   String?            @unique
   lastOrderDate DateTime?
@@ -62,11 +64,22 @@ model Customer {
   spendPoints   Float              @default(0)
   bonusPoints   Float              @default(0)
   totalPoints   Float              @default(0)
+  tags          String?            // Comma-separated tags from Shopify
+  city          String?
+  province      String?
+  country       String?
+  lastSyncAt    DateTime?          // Track when customer data was last synced
+  isActive      Boolean            @default(true) // Active in last 30 days
   tier          Tier?              @relation(fields: [tierId], references: [id])
   transactions  PointTransaction[]
   pendingOrders PendingOrder[]
 
   @@index([totalPoints])
+  @@index([email])
+  @@index([phone])
+  @@index([lastSyncAt])
+  @@index([isActive])
+  @@index([numberOfOrders])
   @@map("Customer")
 }
 
@@ -122,4 +135,21 @@ model PendingOrder {
   @@index([shopifyOrderId])
   @@index([customerId])
   @@map("PendingOrder")
+}
+
+model DashboardMetrics {
+  id                String   @id @default("dashboard") // Single row for dashboard metrics
+  totalCustomers    Int      @default(0)
+  activeCustomers   Int      @default(0)
+  totalSpent        Float    @default(0)
+  monthSpent        Float    @default(0)
+  yearSpent         Float    @default(0)
+  tierCounts        String   @default("{}") // JSON string of tier counts
+  topCompetitorsToday String @default("[]") // JSON string of top competitors today
+  topCompetitorsMonth String @default("[]") // JSON string of top competitors this month
+  lastCalculated    DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("DashboardMetrics")
 }

@@ -101,7 +101,9 @@ export async function createOrUpdateCustomer({
   if (calculatedTotalPoints !== undefined) {
     const tiers = await getTiers();
     // Sort tiers by minPoints in ascending order
-    const sortedTiers = tiers.sort((a: any, b: any) => a.minPoints - b.minPoints);
+    const sortedTiers = tiers.sort(
+      (a: any, b: any) => a.minPoints - b.minPoints,
+    );
 
     // Find the highest tier that the customer qualifies for
     for (let i = sortedTiers.length - 1; i >= 0; i--) {
@@ -164,6 +166,110 @@ export async function createOrUpdateCustomer({
   }
 
   return customer;
+}
+
+/**
+ * Get customers with pagination and filtering
+ */
+export async function getCustomersPaginated({
+  limit = 50,
+  offset = 0,
+  search = "",
+  tier = "",
+  sortBy = "totalPoints",
+  sortDirection = "desc",
+}: {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  tier?: string;
+  sortBy?:
+    | "totalPoints"
+    | "totalSpend"
+    | "bonusPoints"
+    | "firstName"
+    | "lastName"
+    | "email";
+  sortDirection?: "asc" | "desc";
+}) {
+  const where: any = {};
+
+  // Add search filter
+  if (search) {
+    where.OR = [
+      { firstName: { contains: search, mode: "insensitive" } },
+      { lastName: { contains: search, mode: "insensitive" } },
+      { email: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  // Add tier filter
+  if (tier && tier !== "all") {
+    const tierMap: Record<string, number> = {
+      Featherweight: 0,
+      Lightweight: 1500,
+      Welterweight: 5000,
+      Heavyweight: 25000,
+      "Reigning Champion": 100000,
+    };
+
+    const minPoints = tierMap[tier];
+    if (minPoints !== undefined) {
+      if (tier === "Reigning Champion") {
+        where.totalPoints = { gte: minPoints };
+      } else {
+        const nextTierPoints =
+          Object.values(tierMap).find((p) => p > minPoints) || Infinity;
+        where.totalPoints = { gte: minPoints, lt: nextTierPoints };
+      }
+    }
+  }
+
+  // Get total count for pagination
+  const totalCount = await prisma.customer.count({ where });
+
+  // Get customers with pagination
+  const customers = (await prisma.customer.findMany({
+    where,
+    include: {
+      tier: true,
+    },
+    orderBy: {
+      [sortBy]: sortDirection,
+    },
+    take: limit,
+    skip: offset,
+  })) as CustomerWithPoints[];
+
+  return {
+    customers,
+    totalCount,
+  };
+}
+
+/**
+ * Sync recent customers from Shopify
+ */
+export async function syncRecentCustomers(admin: any, hoursBack: number = 1) {
+  const { syncRecentCustomers: syncRecentCustomersFromShopify } = await import(
+    "./customerSync.server"
+  );
+  return syncRecentCustomersFromShopify(admin, hoursBack);
+}
+
+/**
+ * Get sync statistics
+ */
+export async function getSyncStats() {
+  // Get the most recent customer update as a proxy for last sync
+  const lastCustomer = await prisma.customer.findFirst({
+    orderBy: { updatedAt: "desc" },
+    select: { updatedAt: true },
+  });
+
+  return {
+    lastSyncAt: lastCustomer?.updatedAt || null,
+  };
 }
 
 export async function deleteCustomer(id: string) {

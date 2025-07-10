@@ -75,97 +75,79 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
+  const url = new URL(request.url);
 
-  // Function to fetch all customers using cursor-based pagination
-  async function fetchAllCustomers() {
-    let allCustomers: any[] = [];
-    let hasNextPage = true;
-    let cursor: string | null = null;
-    let pageCount = 0;
-    const MAX_PAGES = 20; // Safety limit to prevent infinite loops
-    const PER_PAGE = 250; // Maximum allowed by Shopify
-
-    try {
-      while (hasNextPage && pageCount < MAX_PAGES) {
-        // Build the query with or without cursor
-        const queryVariables: { first: number; after?: string } = cursor
-          ? { first: PER_PAGE, after: cursor }
-          : { first: PER_PAGE };
-
-        const response: any = await admin.graphql(
-          `#graphql
-            query GetCustomers($first: Int!, $after: String) {
-              customers(first: $first, after: $after) {
-                edges {
-                  node {
-                    id
-                    firstName
-                    lastName
-                    email
-                    phone
-                    numberOfOrders
-                    amountSpent {
-                      amount
-                    }
-                    tags
-                    createdAt
-                    defaultAddress {
-                      city
-                      province
-                      country
-                    }
-                  }
-                  cursor
-                }
-                pageInfo {
-                  hasNextPage
-                  endCursor
-                }
-              }
-            }`,
-          { variables: queryVariables },
-        );
-
-        const responseJson: any = await response.json();
-        const customersData: any = responseJson.data?.customers;
-
-        if (!customersData) {
-          console.error("No customer data returned from API");
-          break;
-        }
-
-        // Extract customers from this page
-        const pageCustomers = customersData.edges.map((edge: any) => edge.node);
-        allCustomers = [...allCustomers, ...pageCustomers];
-
-        // Update pagination info for next iteration
-        hasNextPage = customersData.pageInfo.hasNextPage;
-        cursor = customersData.pageInfo.endCursor;
-        pageCount++;
-
-        console.log(
-          `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
-        );
-      }
-
-      return allCustomers;
-    } catch (error) {
-      console.error("Error fetching customers:", error);
-      throw error;
-    }
-  }
+  // Get query parameters
+  const page = parseInt(url.searchParams.get("page") || "1");
+  const search = url.searchParams.get("search") || "";
+  const tier = url.searchParams.get("tier") || "";
+  const sort = url.searchParams.get("sort") || "totalPoints";
+  const direction = url.searchParams.get("direction") || "desc";
+  const forceSync = url.searchParams.get("sync") === "true";
 
   try {
-    const customers = await fetchAllCustomers();
+    console.log(
+      `Customers loader: page=${page}, search="${search}", tier="${tier}", sort=${sort}, direction=${direction}, forceSync=${forceSync}`,
+    );
+    const startTime = Date.now();
+
+    // Import the customer service
+    const { getCustomersPaginated, syncRecentCustomers, getSyncStats } =
+      await import("../services/customer.server");
+
+    // Check if we need to sync recent customers
+    if (forceSync) {
+      console.log("Force syncing customers...");
+      await syncRecentCustomers(admin, 24); // Sync last 24 hours
+    } else {
+      // Check sync status and auto-sync if needed
+      const syncStats = await getSyncStats();
+      const oneHourAgo = new Date();
+      oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+
+      if (!syncStats.lastSyncAt || syncStats.lastSyncAt < oneHourAgo) {
+        console.log("Auto-syncing recent customers...");
+        await syncRecentCustomers(admin, 1); // Sync last hour
+      }
+    }
+
+    // Get customers from local database with pagination
+    const customersPerPage = 50;
+    const offset = (page - 1) * customersPerPage;
+
+    const result = await getCustomersPaginated({
+      limit: customersPerPage,
+      offset,
+      search,
+      tier,
+      sortBy: sort as any,
+      sortDirection: direction as "asc" | "desc",
+    });
+
+    const loadTime = Date.now() - startTime;
+    console.log(`Customers loaded in ${loadTime}ms`);
+
     return json({
-      customers,
+      customers: result.customers,
+      totalCount: result.totalCount,
+      currentPage: page,
+      totalPages: Math.ceil(result.totalCount / customersPerPage),
+      hasNextPage: page < Math.ceil(result.totalCount / customersPerPage),
+      hasPrevPage: page > 1,
+      loadTime,
       success: true,
-      error: null, // Add error property with null value for success case
+      error: null,
     });
   } catch (error) {
     console.error("Error in loader:", error);
     return json({
       customers: [],
+      totalCount: 0,
+      currentPage: 1,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPrevPage: false,
+      loadTime: 0,
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",
     });
