@@ -4,7 +4,10 @@ import {
   createOrUpdateCustomer,
   getCustomerByShopifyId,
 } from "../services/customer.server";
-import { createPointTransaction } from "../services/pointTransaction.server";
+import {
+  createPointTransaction,
+  createBonusPointsTransaction,
+} from "../services/pointTransaction.server";
 import { calculateBonusPoints } from "../services/pointEvent.server";
 import {
   fetchProductCollections,
@@ -302,13 +305,13 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
 
   // Create bonus point transactions
   for (const appliedEvent of appliedEvents) {
-    await createPointTransaction({
+    await createBonusPointsTransaction({
       customerId: loyaltyCustomer.id,
-      type: "bonus",
       amount: appliedEvent.pointsAwarded,
       orderId,
       eventId: appliedEvent.eventId,
       description: `Bonus points from event for order #${orderData.order_number}`,
+      admin,
     });
   }
 

@@ -4,7 +4,7 @@ import {
   createOrUpdateCustomer,
   getCustomerByShopifyId,
 } from "../services/customer.server";
-import { createPointTransaction } from "../services/pointTransaction.server";
+import { createBonusPointsTransaction } from "../services/pointTransaction.server";
 import { calculateBonusPoints } from "../services/pointEvent.server";
 import {
   fetchProductCollections,
@@ -203,19 +203,8 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
     throw error;
   }
 
-  // Calculate base points (1 point per dollar spent)
-  const basePoints = Math.floor(orderAmount);
-
-  // Create base point transaction
-  if (basePoints > 0) {
-    await createPointTransaction({
-      customerId: loyaltyCustomer.id,
-      type: "earn",
-      amount: basePoints,
-      orderId,
-      description: `Points earned from order #${orderData.order_number}`,
-    });
-  }
+  // Note: Base/spend points are handled by the existing loyalty system
+  // This webhook only handles bonus points from events
 
   // Extract product IDs and fetch their collections
   const productIds = orderData.line_items.map((item) =>
@@ -302,30 +291,25 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
 
   // Create bonus point transactions
   for (const appliedEvent of appliedEvents) {
-    await createPointTransaction({
+    await createBonusPointsTransaction({
       customerId: loyaltyCustomer.id,
-      type: "bonus",
       amount: appliedEvent.pointsAwarded,
       orderId,
       eventId: appliedEvent.eventId,
       description: `Bonus points from event for order #${orderData.order_number}`,
+      admin,
     });
   }
 
   // Enhanced final logging
-  const totalPoints = basePoints + bonusPoints;
   console.log(`✅ Order ${orderName} processed successfully:`);
-  console.log(
-    `   💎 Base points: ${basePoints} (from $${orderAmount.toFixed(2)})`,
-  );
   console.log(`   🎁 Bonus points: ${bonusPoints}`);
-  console.log(`   🏆 Total points awarded: ${totalPoints}`);
+  console.log(`   🏆 Total bonus points awarded: ${bonusPoints}`);
   console.log(
     `   📍 Order type: ${isInstoreOrder ? "In-store (BinderPOS)" : "Online"}`,
   );
 
   return {
-    basePoints,
     bonusPoints,
     appliedEvents,
     customerId: loyaltyCustomer.id,
