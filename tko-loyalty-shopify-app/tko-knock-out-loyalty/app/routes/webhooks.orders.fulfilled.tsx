@@ -128,11 +128,23 @@ interface ShopifyOrder {
  * Process a fulfilled order for points calculation
  */
 async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
-  console.log(`Processing fulfilled order ${orderData.id}`);
-
   const customer = orderData.customer!;
   const orderAmount = parseFloat(orderData.total_price);
   const orderId = orderData.id.toString();
+  const orderName = orderData.name; // e.g., "#1001"
+
+  // Enhanced logging with customer details
+  const customerName =
+    `${customer.first_name || ""} ${customer.last_name || ""}`.trim() ||
+    "Unknown";
+  const customerEmail = customer.email || "No email";
+
+  console.log(
+    `📦 Processing fulfilled order ${orderName} ($${orderAmount.toFixed(2)})`,
+  );
+  console.log(
+    `👤 Customer: ${customerName} (${customerEmail}) - ID: ${customer.id}`,
+  );
 
   // Fetch reliable customer data using GraphQL API (same pattern as dashboard)
   let totalSpend = 0;
@@ -153,7 +165,7 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
     totalSpend = parseFloat(
       customerData.data?.customer?.amountSpent?.amount || "0",
     );
-    console.log(`Fetched reliable customer total spend: ${totalSpend}`);
+    console.log(`💰 Customer total spend: $${totalSpend.toFixed(2)}`);
   } catch (error) {
     console.error("Error fetching customer data via GraphQL:", error);
     // Fallback to 0 if GraphQL fails
@@ -229,9 +241,22 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
   // Check if this is an in-store order (BinderPOS)
   const isInstoreOrder = isBinderPOSOrder(orderData.note || null);
 
+  // Log product details
+  console.log(`🛍️ Products in order (${orderLineItems.length} items):`);
+  orderData.line_items.forEach((item, index) => {
+    const collections = productCollections[item.product_id.toString()] || [];
+    console.log(
+      `  ${index + 1}. ${item.title} - $${parseFloat(item.price).toFixed(2)} x${item.quantity}`,
+    );
+    if (collections.length > 0) {
+      console.log(`     Collections: [${collections.join(", ")}]`);
+    }
+  });
+
   // Calculate bonus points
   let bonusPoints = 0;
   let appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
+  let eventNames: string[] = [];
 
   if (orderLineItems.length > 0) {
     try {
@@ -241,10 +266,38 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
       });
       bonusPoints = bonusResult.totalBonusPoints;
       appliedEvents = bonusResult.appliedEvents;
+
+      // Get event names for logging
+      if (appliedEvents.length > 0) {
+        const { PrismaClient } = await import("@prisma/client");
+        const prisma = new PrismaClient();
+        try {
+          const events = await prisma.pointEvent.findMany({
+            where: { id: { in: appliedEvents.map((e) => e.eventId) } },
+            select: { id: true, name: true },
+          });
+          eventNames = events.map((e) => e.name);
+        } catch (error) {
+          console.error("Error fetching event names:", error);
+        } finally {
+          await prisma.$disconnect();
+        }
+      }
     } catch (error) {
       console.error("Error calculating bonus points:", error);
       // Continue without bonus points
     }
+  }
+
+  // Log applied events
+  if (appliedEvents.length > 0) {
+    console.log(`🎯 Applied point events:`);
+    appliedEvents.forEach((event, index) => {
+      const eventName = eventNames[index] || `Event ${event.eventId}`;
+      console.log(`  • ${eventName}: +${event.pointsAwarded} bonus points`);
+    });
+  } else {
+    console.log(`🎯 No point events qualified for this order`);
   }
 
   // Create bonus point transactions
@@ -259,8 +312,16 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
     });
   }
 
+  // Enhanced final logging
+  const totalPoints = basePoints + bonusPoints;
+  console.log(`✅ Order ${orderName} processed successfully:`);
   console.log(
-    `Order ${orderId} processed: ${basePoints} base points + ${bonusPoints} bonus points`,
+    `   💎 Base points: ${basePoints} (from $${orderAmount.toFixed(2)})`,
+  );
+  console.log(`   🎁 Bonus points: ${bonusPoints}`);
+  console.log(`   🏆 Total points awarded: ${totalPoints}`);
+  console.log(
+    `   📍 Order type: ${isInstoreOrder ? "In-store (BinderPOS)" : "Online"}`,
   );
 
   return {
@@ -279,8 +340,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Parse the order data from the webhook payload
     const orderData: ShopifyOrder = payload as ShopifyOrder;
 
+    const customerName = orderData.customer
+      ? `${orderData.customer.first_name || ""} ${orderData.customer.last_name || ""}`.trim() ||
+        "Unknown"
+      : "No customer";
+    const customerEmail = orderData.customer?.email || "No email";
+
     console.log(
-      `Processing fulfilled order ${orderData.id} for customer ${orderData.customer?.id}`,
+      `🚀 Processing fulfilled order ${orderData.name} for customer ${customerName} (${customerEmail})`,
     );
 
     // Skip test orders
