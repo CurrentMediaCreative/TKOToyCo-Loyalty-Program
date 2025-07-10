@@ -774,7 +774,7 @@ export default function Index() {
                           🏆 Today's Top Contenders
                         </Text>
                         <Text variant="bodySm" as="p" tone="subdued">
-                          Top performers in today's competition
+                          Today's top customers
                         </Text>
                       </BlockStack>
                       <Link to="/app/customers">
@@ -804,6 +804,9 @@ export default function Index() {
                         ]}
                         rows={todayCompetitorRows}
                         hoverable
+                        truncate
+                        hasZebraStripingOnData={false}
+                        increasedTableDensity
                       />
                     ) : (
                       <EmptyState
@@ -859,6 +862,9 @@ export default function Index() {
                         ]}
                         rows={monthCompetitorRows}
                         hoverable
+                        truncate
+                        hasZebraStripingOnData={false}
+                        increasedTableDensity
                       />
                     ) : (
                       <EmptyState
