@@ -261,26 +261,66 @@
         'Reigning Champion': { min: 50000, max: 50000 } // Max tier
       };
 
-      // Get cart total for points calculation
-      function getCartTotal() {
+      // Get cart data including line items for accurate bonus point calculation
+      function getCartData() {
+        let cartData = {
+          total_price: 0,
+          items: []
+        };
+
+        // Try to get full cart data from Shopify object
         if (window.Shopify && window.Shopify.cart) {
-          return window.Shopify.cart.total_price / 100; // Convert from cents
+          cartData.total_price = window.Shopify.cart.total_price / 100; // Convert from cents
+          cartData.items = window.Shopify.cart.items.map(item => ({
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            quantity: item.quantity,
+            price: item.price / 100, // Convert from cents
+            line_price: item.line_price / 100, // Convert from cents
+            product_title: item.product_title,
+            variant_title: item.variant_title,
+            vendor: item.vendor,
+            product_type: item.product_type,
+            tags: item.product_tags || [],
+            collections: item.product_collections || []
+          }));
+          return cartData;
         }
         
-        // Fallback: try to get from cart object
-        if (typeof cart !== 'undefined' && cart.total_price) {
-          return cart.total_price / 100;
+        // Fallback: try to get from global cart object
+        if (typeof cart !== 'undefined' && cart.items) {
+          cartData.total_price = cart.total_price / 100;
+          cartData.items = cart.items.map(item => ({
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            quantity: item.quantity,
+            price: item.price / 100,
+            line_price: item.line_price / 100,
+            product_title: item.product_title,
+            variant_title: item.variant_title,
+            vendor: item.vendor,
+            product_type: item.product_type,
+            tags: item.product_tags || [],
+            collections: item.product_collections || []
+          }));
+          return cartData;
         }
         
-        // Last resort: parse from page
+        // Last resort: parse total from page (no line items available)
         const cartTotalElement = document.querySelector('[data-cart-total], .cart__total-price, .cart-total');
         if (cartTotalElement) {
           const totalText = cartTotalElement.textContent || cartTotalElement.innerText;
           const match = totalText.match(/[\d,]+\.?\d*/);
-          return match ? parseFloat(match[0].replace(',', '')) : 0;
+          cartData.total_price = match ? parseFloat(match[0].replace(',', '')) : 0;
         }
         
-        return 0;
+        return cartData;
+      }
+
+      // Get cart total for backward compatibility
+      function getCartTotal() {
+        const cartData = getCartData();
+        return cartData.total_price;
       }
 
       // Calculate tier progress
@@ -343,20 +383,26 @@
       // Fetch loyalty data from our API
       async function loadLoyaltyData() {
         try {
-          const cartTotal = getCartTotal();
+          const cartData = getCartData();
           const customerEmail = getCustomerEmail();
           
-          // Build API URL
-          let apiUrl = `/apps/tko-loyalty/api/public/customer-loyalty?cartTotal=${cartTotal}`;
-          if (customerEmail) {
-            apiUrl += `&customerEmail=${encodeURIComponent(customerEmail)}`;
-          }
+          // Build API URL - Use the correct app domain from shopify.app.toml
+          const appDomain = 'https://tkotoyco-loyalty-program.onrender.com';
+          const apiUrl = `${appDomain}/api/public/customer-loyalty`;
+          
+          // Prepare request body with cart data and customer email
+          const requestBody = {
+            cartTotal: cartData.total_price,
+            cartItems: cartData.items,
+            customerEmail: customerEmail
+          };
           
           const response = await fetch(apiUrl, {
-            method: 'GET',
+            method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-            }
+            },
+            body: JSON.stringify(requestBody)
           });
 
           if (!response.ok) {
@@ -364,7 +410,7 @@
           }
 
           const data = await response.json();
-          displayLoyaltyData(data, cartTotal);
+          displayLoyaltyData(data, cartData.total_price);
         } catch (error) {
           console.error('Error loading loyalty data:', error);
           displayError();

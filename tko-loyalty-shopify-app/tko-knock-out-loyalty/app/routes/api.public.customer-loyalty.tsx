@@ -137,10 +137,89 @@ function calculateBonusPoints(cartTotal: number, activeEvents: any[]) {
   };
 }
 
+/**
+ * Calculate bonus points with detailed cart items data
+ * This enhanced version can check specific products and collections
+ */
+function calculateBonusPointsWithItems(
+  cartTotal: number,
+  cartItems: any[],
+  activeEvents: any[],
+) {
+  let totalBonusPoints = 0;
+  const appliedEvents: Array<{
+    eventId: string;
+    eventName: string;
+    bonusPoints: number;
+    bonusPercentage: number;
+  }> = [];
+
+  for (const event of activeEvents) {
+    let eventBonusPoints = 0;
+
+    if (event.eventType === "store-wide") {
+      // Apply to entire cart
+      eventBonusPoints = (cartTotal * event.bonusPercentage) / 100;
+    } else if (event.eventType === "product-specific" && event.productIds) {
+      // Apply to specific products
+      const productIds = Array.isArray(event.productIds)
+        ? event.productIds
+        : JSON.parse(event.productIds || "[]");
+
+      for (const item of cartItems) {
+        if (productIds.includes(item.product_id?.toString())) {
+          eventBonusPoints += (item.line_price * event.bonusPercentage) / 100;
+        }
+      }
+    } else if (event.eventType === "collection-specific" && event.collections) {
+      // Apply to products in specific collections
+      const eventCollections = Array.isArray(event.collections)
+        ? event.collections
+        : JSON.parse(event.collections || "[]");
+
+      for (const item of cartItems) {
+        const itemCollections = item.collections || [];
+        const hasMatchingCollection = eventCollections.some(
+          (eventCollection: string) =>
+            itemCollections.some(
+              (itemCollection: string) =>
+                itemCollection
+                  .toLowerCase()
+                  .includes(eventCollection.toLowerCase()) ||
+                eventCollection
+                  .toLowerCase()
+                  .includes(itemCollection.toLowerCase()),
+            ),
+        );
+
+        if (hasMatchingCollection) {
+          eventBonusPoints += (item.line_price * event.bonusPercentage) / 100;
+        }
+      }
+    }
+
+    const roundedBonus = Math.round(eventBonusPoints * 100) / 100;
+    if (roundedBonus > 0) {
+      totalBonusPoints += roundedBonus;
+      appliedEvents.push({
+        eventId: event.id,
+        eventName: event.name,
+        bonusPoints: roundedBonus,
+        bonusPercentage: event.bonusPercentage,
+      });
+    }
+  }
+
+  return {
+    bonusPoints: Math.round(totalBonusPoints * 100) / 100,
+    appliedEvents,
+  };
+}
+
 // Handle CORS for theme access
 function setCorsHeaders(response: Response) {
   response.headers.set("Access-Control-Allow-Origin", "*");
-  response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   response.headers.set(
     "Access-Control-Allow-Headers",
     "Content-Type, X-Shopify-Shop-Domain, X-Customer-Email",
@@ -219,19 +298,85 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 };
 
-// Handle OPTIONS requests for CORS
+// Handle POST requests with cart items data
 export const action = async ({ request }: LoaderFunctionArgs) => {
-  if (request.method === "OPTIONS") {
-    return setCorsHeaders(new Response(null, { status: 200 }));
-  }
+  try {
+    // Handle CORS preflight
+    if (request.method === "OPTIONS") {
+      return setCorsHeaders(new Response(null, { status: 200 }));
+    }
 
-  return setCorsHeaders(
-    json(
-      {
-        success: false,
-        error: "Method not allowed. Use GET.",
-      } as CustomerLoyaltyResponse,
-      { status: 405 },
-    ),
-  );
+    if (request.method !== "POST") {
+      return setCorsHeaders(
+        json(
+          {
+            success: false,
+            error: "Method not allowed. Use POST.",
+          } as CustomerLoyaltyResponse,
+          { status: 405 },
+        ),
+      );
+    }
+
+    // Parse request body
+    const body = await request.json();
+    const { cartTotal, cartItems, customerEmail } = body;
+
+    // Validate cart total
+    if (isNaN(cartTotal) || cartTotal < 0) {
+      return setCorsHeaders(
+        json(
+          {
+            success: false,
+            error: "Invalid cart total",
+          } as CustomerLoyaltyResponse,
+          { status: 400 },
+        ),
+      );
+    }
+
+    let customer = null;
+
+    // Try to get customer if email is provided
+    if (customerEmail) {
+      customer = await getCustomerByEmail(customerEmail);
+    }
+
+    // Get active events for bonus calculation
+    const activeEvents = await getActivePointEvents();
+
+    // Calculate cart points (enhanced with cart items if available)
+    const basePoints = Math.floor(cartTotal);
+    const { bonusPoints, appliedEvents } = calculateBonusPointsWithItems(
+      cartTotal,
+      cartItems || [],
+      activeEvents,
+    );
+    const totalCartPoints = basePoints + bonusPoints;
+
+    const response: CustomerLoyaltyResponse = {
+      success: true,
+      customer: customer || undefined,
+      cartCalculation: {
+        cartTotal,
+        basePoints,
+        bonusPoints,
+        totalPoints: totalCartPoints,
+        appliedEvents,
+      },
+    };
+
+    return setCorsHeaders(json(response));
+  } catch (error) {
+    console.error("Error in customer loyalty POST API:", error);
+    return setCorsHeaders(
+      json(
+        {
+          success: false,
+          error: "Failed to process cart data",
+        } as CustomerLoyaltyResponse,
+        { status: 500 },
+      ),
+    );
+  }
 };
