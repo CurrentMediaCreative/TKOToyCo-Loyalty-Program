@@ -80,59 +80,132 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Get query parameters
   const page = parseInt(url.searchParams.get("page") || "1");
   const search = url.searchParams.get("search") || "";
-  const tier = url.searchParams.get("tier") || "";
-  const sort = url.searchParams.get("sort") || "totalPoints";
-  const direction = url.searchParams.get("direction") || "desc";
-  const forceSync = url.searchParams.get("sync") === "true";
 
   try {
-    console.log(
-      `Customers loader: page=${page}, search="${search}", tier="${tier}", sort=${sort}, direction=${direction}, forceSync=${forceSync}`,
-    );
+    console.log(`Customers loader: page=${page}, search="${search}"`);
     const startTime = Date.now();
 
-    // Import the customer service
-    const { getCustomersPaginated, syncRecentCustomers, getSyncStats } =
-      await import("../services/customer.server");
+    // Fetch customers from Shopify API
+    const customersPerPage = 50;
 
-    // Check if we need to sync recent customers
-    if (forceSync) {
-      console.log("Force syncing customers...");
-      await syncRecentCustomers(admin, 24); // Sync last 24 hours
-    } else {
-      // Check sync status and auto-sync if needed
-      const syncStats = await getSyncStats();
-      const oneHourAgo = new Date();
-      oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+    // Build GraphQL query for customers
+    let query = `
+      query getCustomers($first: Int!, $query: String, $after: String) {
+        customers(first: $first, query: $query, after: $after) {
+          edges {
+            node {
+              id
+              firstName
+              lastName
+              email
+              phone
+              amountSpent {
+                amount
+                currencyCode
+              }
+              numberOfOrders
+              defaultAddress {
+                city
+                province
+                country
+              }
+              tags
+              createdAt
+              updatedAt
+            }
+            cursor
+          }
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            startCursor
+            endCursor
+          }
+        }
+      }
+    `;
 
-      if (!syncStats.lastSyncAt || syncStats.lastSyncAt < oneHourAgo) {
-        console.log("Auto-syncing recent customers...");
-        await syncRecentCustomers(admin, 1); // Sync last hour
+    // Build search query for Shopify
+    let shopifyQuery = "";
+    if (search) {
+      shopifyQuery = `email:*${search}* OR first_name:*${search}* OR last_name:*${search}* OR phone:*${search}*`;
+    }
+
+    // Calculate cursor for pagination
+    let after = null;
+    if (page > 1) {
+      // For simplicity, we'll use a basic offset approach
+      // In a production app, you'd want to store cursors properly
+      const skipCount = (page - 1) * customersPerPage;
+      if (skipCount > 0) {
+        // Get the cursor for the previous page
+        const prevPageQuery = await admin.graphql(query, {
+          variables: {
+            first: skipCount,
+            query: shopifyQuery || null,
+          },
+        });
+        const prevPageData = await prevPageQuery.json();
+        if (prevPageData.data?.customers?.edges?.length > 0) {
+          after =
+            prevPageData.data.customers.edges[
+              prevPageData.data.customers.edges.length - 1
+            ].cursor;
+        }
       }
     }
 
-    // Get customers from local database with pagination
-    const customersPerPage = 50;
-    const offset = (page - 1) * customersPerPage;
-
-    const result = await getCustomersPaginated({
-      limit: customersPerPage,
-      offset,
-      search,
-      tier,
-      sortBy: sort as any,
-      sortDirection: direction as "asc" | "desc",
+    const response = await admin.graphql(query, {
+      variables: {
+        first: customersPerPage,
+        query: shopifyQuery || null,
+        after,
+      },
     });
+
+    const data = await response.json();
+
+    if (data.errors) {
+      console.error("GraphQL errors:", data.errors);
+      throw new Error("Failed to fetch customers from Shopify");
+    }
+
+    const customers =
+      data.data?.customers?.edges?.map((edge: any) => edge.node) || [];
+    const pageInfo = data.data?.customers?.pageInfo || {};
+
+    // Get loyalty data for these customers from local database
+    const { getCustomerByShopifyId } = await import(
+      "../services/customer.server"
+    );
+
+    // Enhance customers with loyalty data
+    const enhancedCustomers = await Promise.all(
+      customers.map(async (customer: any) => {
+        const shopifyId = parseInt(
+          customer.id.replace("gid://shopify/Customer/", ""),
+        );
+        const loyaltyCustomer = await getCustomerByShopifyId(shopifyId);
+
+        return {
+          ...customer,
+          // Add loyalty data if available
+          spendPoints: loyaltyCustomer?.spendPoints || 0,
+          bonusPoints: loyaltyCustomer?.bonusPoints || 0,
+          totalPoints: loyaltyCustomer?.totalPoints || 0,
+          tier: loyaltyCustomer?.tier || null,
+        };
+      }),
+    );
 
     const loadTime = Date.now() - startTime;
     console.log(`Customers loaded in ${loadTime}ms`);
 
     return json({
-      customers: result.customers,
-      totalCount: result.totalCount,
+      customers: enhancedCustomers,
+      totalCount: customers.length, // Note: Shopify doesn't provide total count easily
       currentPage: page,
-      totalPages: Math.ceil(result.totalCount / customersPerPage),
-      hasNextPage: page < Math.ceil(result.totalCount / customersPerPage),
+      hasNextPage: pageInfo.hasNextPage || false,
       hasPrevPage: page > 1,
       loadTime,
       success: true,
@@ -144,7 +217,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       customers: [],
       totalCount: 0,
       currentPage: 1,
-      totalPages: 0,
       hasNextPage: false,
       hasPrevPage: false,
       loadTime: 0,
