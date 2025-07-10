@@ -787,24 +787,31 @@ export default function Index() {
                       </Link>
                     </InlineStack>
                     {todayCompetitorRows.length > 0 ? (
-                      <DataTable
-                        columnContentTypes={[
-                          "text",
-                          "text",
-                          "text",
-                          "text",
-                          "text",
-                        ]}
-                        headings={[
-                          "Fighter",
-                          "Weight Class",
-                          "Total Spent",
-                          "Total Orders",
-                          "Actions",
-                        ]}
-                        rows={todayCompetitorRows}
-                        hoverable
-                      />
+                      <div style={{ overflow: "visible" }}>
+                        <DataTable
+                          columnContentTypes={[
+                            "text",
+                            "text",
+                            "text",
+                            "text",
+                            "text",
+                          ]}
+                          headings={[
+                            "Fighter",
+                            "Weight Class",
+                            "Total Spent",
+                            "Total Orders",
+                            "Actions",
+                          ]}
+                          rows={todayCompetitorRows}
+                          hoverable
+                        />
+                        <style>{`
+                          .Polaris-DataTable__Navigation {
+                            display: none !important;
+                          }
+                        `}</style>
+                      </div>
                     ) : (
                       <EmptyState
                         heading="No champions today"
