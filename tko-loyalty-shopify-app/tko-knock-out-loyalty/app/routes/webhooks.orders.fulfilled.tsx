@@ -134,6 +134,32 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
   const orderAmount = parseFloat(orderData.total_price);
   const orderId = orderData.id.toString();
 
+  // Fetch reliable customer data using GraphQL API (same pattern as dashboard)
+  let totalSpend = 0;
+  try {
+    const customerResponse = await admin.graphql(
+      `#graphql
+        query getCustomer($id: ID!) {
+          customer(id: $id) {
+            amountSpent {
+              amount
+            }
+          }
+        }`,
+      { variables: { id: customer.admin_graphql_api_id } },
+    );
+
+    const customerData = await customerResponse.json();
+    totalSpend = parseFloat(
+      customerData.data?.customer?.amountSpent?.amount || "0",
+    );
+    console.log(`Fetched reliable customer total spend: ${totalSpend}`);
+  } catch (error) {
+    console.error("Error fetching customer data via GraphQL:", error);
+    // Fallback to 0 if GraphQL fails
+    totalSpend = 0;
+  }
+
   // Create or update customer in our database
   let loyaltyCustomer;
   try {
@@ -145,7 +171,7 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
         email: customer.email,
         firstName: customer.first_name,
         lastName: customer.last_name,
-        totalSpend: parseFloat(customer.total_spent),
+        totalSpend: totalSpend,
         lastOrderDate: new Date(orderData.created_at),
         admin,
       });
@@ -155,7 +181,7 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
         email: customer.email,
         firstName: customer.first_name,
         lastName: customer.last_name,
-        totalSpend: parseFloat(customer.total_spent),
+        totalSpend: totalSpend,
         lastOrderDate: new Date(orderData.created_at),
         admin,
       });
