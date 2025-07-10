@@ -247,11 +247,11 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
-    const { shop, topic, admin } = await authenticate.webhook(request);
+    const { shop, topic, admin, payload } = await authenticate.webhook(request);
     console.log(`Received ${topic} webhook for ${shop}`);
 
     // Parse the order data from the webhook payload
-    const orderData: ShopifyOrder = await request.json();
+    const orderData: ShopifyOrder = payload as ShopifyOrder;
 
     console.log(
       `Processing order ${orderData.id} for customer ${orderData.customer?.id}`,
