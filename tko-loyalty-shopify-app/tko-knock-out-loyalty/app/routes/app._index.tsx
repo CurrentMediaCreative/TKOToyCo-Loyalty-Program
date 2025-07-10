@@ -787,31 +787,24 @@ export default function Index() {
                       </Link>
                     </InlineStack>
                     {todayCompetitorRows.length > 0 ? (
-                      <div style={{ overflow: "visible" }}>
-                        <DataTable
-                          columnContentTypes={[
-                            "text",
-                            "text",
-                            "text",
-                            "text",
-                            "text",
-                          ]}
-                          headings={[
-                            "Fighter",
-                            "Weight Class",
-                            "Total Spent",
-                            "Total Orders",
-                            "Actions",
-                          ]}
-                          rows={todayCompetitorRows}
-                          hoverable
-                        />
-                        <style>{`
-                          .Polaris-DataTable__Navigation {
-                            display: none !important;
-                          }
-                        `}</style>
-                      </div>
+                      <DataTable
+                        columnContentTypes={[
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                        ]}
+                        headings={[
+                          "Fighter",
+                          "Weight Class",
+                          "Total Spent",
+                          "Orders",
+                          "Actions",
+                        ]}
+                        rows={todayCompetitorRows}
+                        hoverable
+                      />
                     ) : (
                       <EmptyState
                         heading="No champions today"
@@ -861,7 +854,7 @@ export default function Index() {
                           "Fighter",
                           "Weight Class",
                           "Total Spent",
-                          "Total Orders",
+                          "Orders",
                           "Actions",
                         ]}
                         rows={monthCompetitorRows}
