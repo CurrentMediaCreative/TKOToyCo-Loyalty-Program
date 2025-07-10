@@ -22,21 +22,165 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getPointEvents } from "../services/pointEvent.server";
-import { getCustomers } from "../services/customer.server";
-import { getTiers } from "../services/tier.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
 
   try {
-    // Fetch events for the event-based report
+    // Fetch events from database for the event-based report
     const events = await getPointEvents();
 
-    // Fetch customers for customer summary
-    const customers = await getCustomers();
+    // Fetch customers from Shopify API instead of empty database
+    async function fetchAllCustomers() {
+      let allCustomers: any[] = [];
+      let hasNextPage = true;
+      let cursor: string | null = null;
+      let pageCount = 0;
+      const MAX_PAGES = 20; // Safety limit
+      const PER_PAGE = 250; // Maximum allowed by Shopify
 
-    // Fetch tiers for tier distribution analysis
-    const tiers = await getTiers();
+      try {
+        while (hasNextPage && pageCount < MAX_PAGES) {
+          const queryVariables: {
+            first: number;
+            after?: string;
+            sortKey: string;
+            reverse: boolean;
+          } = cursor
+            ? {
+                first: PER_PAGE,
+                after: cursor,
+                sortKey: "UPDATED_AT",
+                reverse: true,
+              }
+            : { first: PER_PAGE, sortKey: "UPDATED_AT", reverse: true };
+
+          const response: any = await admin.graphql(
+            `#graphql
+              query GetCustomers($first: Int!, $after: String, $sortKey: CustomerSortKeys!, $reverse: Boolean!) {
+                customers(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+                  edges {
+                    node {
+                      id
+                      firstName
+                      lastName
+                      email
+                      amountSpent {
+                        amount
+                      }
+                      numberOfOrders
+                      tags
+                      createdAt
+                      lastOrder {
+                        createdAt
+                      }
+                      orders(first: 50, sortKey: CREATED_AT, reverse: true) {
+                        edges {
+                          node {
+                            id
+                            createdAt
+                            totalPriceSet {
+                              shopMoney {
+                                amount
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    cursor
+                  }
+                  pageInfo {
+                    hasNextPage
+                    endCursor
+                  }
+                }
+              }`,
+            { variables: queryVariables },
+          );
+
+          const responseJson: any = await response.json();
+          const customersData: any = responseJson.data?.customers;
+
+          if (!customersData) {
+            console.error("No customer data returned from API");
+            break;
+          }
+
+          const pageCustomers = customersData.edges.map(
+            (edge: any) => edge.node,
+          );
+          allCustomers = [...allCustomers, ...pageCustomers];
+
+          hasNextPage = customersData.pageInfo.hasNextPage;
+          cursor = customersData.pageInfo.endCursor;
+          pageCount++;
+        }
+
+        return allCustomers;
+      } catch (error) {
+        console.error("Error fetching customers:", error);
+        throw error;
+      }
+    }
+
+    const shopifyCustomers = await fetchAllCustomers();
+
+    // Transform Shopify customers to include tier information and points calculation
+    const customers = shopifyCustomers.map((customer: any) => {
+      const spent = parseFloat(customer.amountSpent?.amount || "0");
+
+      // Calculate tier based on spending (same logic as dashboard)
+      let tier = "Featherweight";
+      const hasReigningChampionTag =
+        customer.tags &&
+        customer.tags.some(
+          (tag: string) => tag.toLowerCase() === "reigning champion",
+        );
+
+      if (hasReigningChampionTag) {
+        tier = "Reigning Champion";
+      } else if (spent >= 25000) {
+        tier = "Heavyweight";
+      } else if (spent >= 5000) {
+        tier = "Welterweight";
+      } else if (spent >= 1500) {
+        tier = "Lightweight";
+      }
+
+      // Calculate points based on spending (1 point per dollar spent)
+      const spendPoints = Math.floor(spent);
+
+      // For now, set bonus points to 0 since we'd need to query the database
+      // In a full implementation, we'd fetch bonus points from the database
+      const bonusPoints = 0;
+      const totalPoints = spendPoints + bonusPoints;
+
+      return {
+        id: customer.id,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        email: customer.email,
+        amountSpent: spent,
+        numberOfOrders: customer.numberOfOrders,
+        tier,
+        spendPoints,
+        bonusPoints,
+        totalPoints,
+        createdAt: customer.createdAt,
+        lastOrder: customer.lastOrder,
+        orders: customer.orders?.edges?.map((edge: any) => edge.node) || [],
+      };
+    });
+
+    // Create tier definitions for tier distribution analysis
+    const tiers = [
+      { id: "featherweight", name: "Featherweight", minSpend: 0 },
+      { id: "lightweight", name: "Lightweight", minSpend: 1500 },
+      { id: "welterweight", name: "Welterweight", minSpend: 5000 },
+      { id: "heavyweight", name: "Heavyweight", minSpend: 25000 },
+      { id: "reigning-champion", name: "Reigning Champion", minSpend: 0 }, // Invite-only
+    ];
 
     return json({ events, customers, tiers });
   } catch (error) {
@@ -212,7 +356,7 @@ export default function ReportsPage() {
   // Calculate tier distribution
   const tierDistribution = tiers.map((tier: any) => {
     const customersInTier = customers.filter(
-      (customer: any) => customer.tierId === tier.id,
+      (customer: any) => customer.tier === tier.name,
     );
     const tierPoints = customersInTier.reduce(
       (sum: number, customer: any) => sum + (customer.totalPoints || 0),
