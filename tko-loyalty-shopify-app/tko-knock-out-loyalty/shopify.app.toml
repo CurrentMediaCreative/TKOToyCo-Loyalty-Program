@@ -22,6 +22,10 @@ api_version = "2025-04"
   topics = [ "app/uninstalled" ]
   uri = "/webhooks/app/uninstalled"
 
+  [[webhooks.subscriptions]]
+  topics = [ "orders/fulfilled" ]
+  uri = "/webhooks/orders/fulfilled"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_analytics,read_channels,read_customers,read_draft_orders,read_orders,read_products,read_reports,read_shopify_payments_accounts,read_store_credit_account_transactions,read_store_credit_accounts,write_customers"
