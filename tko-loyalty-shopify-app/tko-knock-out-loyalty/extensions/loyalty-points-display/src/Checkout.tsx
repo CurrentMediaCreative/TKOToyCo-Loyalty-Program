@@ -1,6 +1,5 @@
 import {
   reactExtension,
-  useApi,
   useSettings,
   useCartLines,
   useCustomer,
@@ -9,8 +8,8 @@ import {
   Text,
   InlineLayout,
   Divider,
-} from '@shopify/ui-extensions-react/checkout';
-import { useState, useEffect } from 'react';
+} from "@shopify/ui-extensions-react/checkout";
+import { useState, useEffect } from "react";
 
 interface PointsCalculation {
   spendPoints: number;
@@ -26,13 +25,11 @@ interface PointsCalculation {
   activeEventsCount: number;
 }
 
-export default reactExtension(
-  'purchase.checkout.block.render',
-  () => <Extension />,
-);
+export default reactExtension("purchase.checkout.block.render", () => (
+  <Extension />
+));
 
 function Extension() {
-  const { extension } = useApi();
   const settings = useSettings();
   const cartLines = useCartLines();
   const customer = useCustomer();
@@ -44,12 +41,12 @@ function Extension() {
 
   // Get settings
   const adminOnly = settings.admin_only === true;
-  const title = settings.title || 'Loyalty Points You\'ll Earn';
+  const title = settings.title || "Loyalty Points You'll Earn";
   const showBreakdown = settings.show_breakdown !== false;
 
   // Calculate order totals
   const subtotal = cartLines.reduce((total: number, line: any) => {
-    return total + (line.cost.totalAmount.amount * line.quantity);
+    return total + line.cost.totalAmount.amount * line.quantity;
   }, 0);
 
   // For admin-only mode, we'll show for all users in development
@@ -69,21 +66,28 @@ function Extension() {
       try {
         // Transform cart lines to match our API format
         const apiCartLines = cartLines.map((line: any) => ({
-          product_id: line.merchandise.product?.id?.replace('gid://shopify/Product/', '') || '',
-          variant_id: line.merchandise.id?.replace('gid://shopify/ProductVariant/', '') || '',
-          title: line.merchandise.product?.title || line.merchandise.title || '',
+          product_id:
+            line.merchandise.product?.id?.replace(
+              "gid://shopify/Product/",
+              "",
+            ) || "",
+          variant_id:
+            line.merchandise.id?.replace("gid://shopify/ProductVariant/", "") ||
+            "",
+          title:
+            line.merchandise.product?.title || line.merchandise.title || "",
           quantity: line.quantity,
           price: line.cost.totalAmount.amount,
-          product_type: line.merchandise.product?.productType || '',
-          tags: line.merchandise.product?.tags?.join(',') || '',
-          variant_title: line.merchandise.title || '',
+          product_type: line.merchandise.product?.productType || "",
+          tags: line.merchandise.product?.tags?.join(",") || "",
+          variant_title: line.merchandise.title || "",
         }));
 
-        // Make API call to calculate points
-        const response = await fetch('/api/calculate-points', {
-          method: 'POST',
+        // Make API call to calculate points using public endpoint
+        const response = await fetch("/api/public/calculate-points", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             cartLines: apiCartLines,
@@ -93,20 +97,22 @@ function Extension() {
         });
 
         if (!response.ok) {
-          throw new Error('Failed to calculate points');
+          throw new Error("Failed to calculate points");
         }
 
         const data = await response.json();
-        
+
         if (data.success) {
           setPointsData(data);
         } else {
-          throw new Error(data.error || 'Unknown error');
+          throw new Error(data.error || "Unknown error");
         }
       } catch (err) {
-        console.error('Error calculating points:', err);
-        setError(err instanceof Error ? err.message : 'Failed to calculate points');
-        
+        console.error("Error calculating points:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to calculate points",
+        );
+
         // Fallback to simple calculation
         const spendPoints = Math.floor(subtotal);
         setPointsData({
@@ -148,32 +154,38 @@ function Extension() {
     <Banner status="success">
       <BlockStack spacing="tight">
         <Text emphasis="bold">{title}</Text>
-        
+
         {showBreakdown ? (
           <BlockStack spacing="extraTight">
-            <InlineLayout columns={['fill', 'auto']}>
+            <InlineLayout columns={["fill", "auto"]}>
               <Text>Spend Points:</Text>
               <Text emphasis="bold">{pointsData.spendPoints}</Text>
             </InlineLayout>
-            
+
             {pointsData.bonusPoints > 0 && (
-              <InlineLayout columns={['fill', 'auto']}>
+              <InlineLayout columns={["fill", "auto"]}>
                 <Text>Bonus Points:</Text>
-                <Text emphasis="bold" appearance="accent">{pointsData.bonusPoints}</Text>
+                <Text emphasis="bold" appearance="accent">
+                  {pointsData.bonusPoints}
+                </Text>
               </InlineLayout>
             )}
-            
+
             <Divider />
-            
-            <InlineLayout columns={['fill', 'auto']}>
+
+            <InlineLayout columns={["fill", "auto"]}>
               <Text emphasis="bold">Total Points:</Text>
-              <Text emphasis="bold" appearance="accent">{pointsData.totalPoints}</Text>
+              <Text emphasis="bold" appearance="accent">
+                {pointsData.totalPoints}
+              </Text>
             </InlineLayout>
           </BlockStack>
         ) : (
-          <InlineLayout columns={['fill', 'auto']}>
+          <InlineLayout columns={["fill", "auto"]}>
             <Text>Points you'll earn:</Text>
-            <Text emphasis="bold" appearance="accent">{pointsData.totalPoints}</Text>
+            <Text emphasis="bold" appearance="accent">
+              {pointsData.totalPoints}
+            </Text>
           </InlineLayout>
         )}
 
@@ -184,17 +196,19 @@ function Extension() {
             </Text>
             {pointsData.appliedEvents.map((event, index) => (
               <Text key={event.eventId} appearance="subdued" size="small">
-                • {event.eventName}: +{event.bonusPoints} points ({event.bonusPercentage}% bonus)
+                • {event.eventName}: +{event.bonusPoints} points (
+                {event.bonusPercentage}% bonus)
               </Text>
             ))}
           </BlockStack>
         )}
 
-        {pointsData.bonusPoints > 0 && pointsData.appliedEvents.length === 0 && (
-          <Text appearance="subdued" size="small">
-            🎉 You're earning bonus points from active promotions!
-          </Text>
-        )}
+        {pointsData.bonusPoints > 0 &&
+          pointsData.appliedEvents.length === 0 && (
+            <Text appearance="subdued" size="small">
+              🎉 You're earning bonus points from active promotions!
+            </Text>
+          )}
 
         {!customer && (
           <Text appearance="subdued" size="small">
