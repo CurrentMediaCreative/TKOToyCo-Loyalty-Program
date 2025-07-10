@@ -15,9 +15,8 @@ import {
   Grid,
   DataTable,
   EmptyState,
-  Banner,
 } from "@shopify/polaris";
-import { ViewIcon, RefreshIcon } from "@shopify/polaris-icons";
+import { ViewIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 
@@ -25,62 +24,200 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   try {
-    console.log("Dashboard loader: Fetching data from Shopify");
-    const startTime = Date.now();
+    // Function to fetch all customers using cursor-based pagination
+    async function fetchAllCustomers() {
+      let allCustomers: any[] = [];
+      let hasNextPage = true;
+      let cursor: string | null = null;
+      let pageCount = 0;
+      const MAX_PAGES = 20; // Safety limit to prevent infinite loops
+      const PER_PAGE = 250; // Maximum allowed by Shopify
 
-    // Fetch customers from Shopify API for dashboard metrics
-    const customersQuery = `
-      query getCustomers($first: Int!) {
-        customers(first: $first) {
-          edges {
-            node {
-              id
-              firstName
-              lastName
-              email
-              amountSpent {
-                amount
-                currencyCode
+      try {
+        while (hasNextPage && pageCount < MAX_PAGES) {
+          // Build the query with or without cursor
+          const queryVariables: {
+            first: number;
+            after?: string;
+            sortKey: string;
+            reverse: boolean;
+          } = cursor
+            ? {
+                first: PER_PAGE,
+                after: cursor,
+                sortKey: "UPDATED_AT",
+                reverse: true,
               }
-              numberOfOrders
-              createdAt
-              updatedAt
-            }
+            : { first: PER_PAGE, sortKey: "UPDATED_AT", reverse: true };
+
+          const response: any = await admin.graphql(
+            `#graphql
+              query GetCustomers($first: Int!, $after: String, $sortKey: CustomerSortKeys!, $reverse: Boolean!) {
+                customers(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+                  edges {
+                    node {
+                      id
+                      firstName
+                      lastName
+                      email
+                      amountSpent {
+                        amount
+                      }
+                      numberOfOrders
+                      tags
+                      lastOrder {
+                        createdAt
+                      }
+                      orders(first: 20, sortKey: CREATED_AT, reverse: true) {
+                        edges {
+                          node {
+                            id
+                            createdAt
+                            totalPriceSet {
+                              shopMoney {
+                                amount
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                    cursor
+                  }
+                  pageInfo {
+                    hasNextPage
+                    endCursor
+                  }
+                }
+              }`,
+            { variables: queryVariables },
+          );
+
+          const responseJson: any = await response.json();
+          const customersData: any = responseJson.data?.customers;
+
+          if (!customersData) {
+            console.error("No customer data returned from API");
+            break;
           }
+
+          // Extract customers from this page
+          const pageCustomers = customersData.edges.map(
+            (edge: any) => edge.node,
+          );
+          allCustomers = [...allCustomers, ...pageCustomers];
+
+          // Update pagination info for next iteration
+          hasNextPage = customersData.pageInfo.hasNextPage;
+          cursor = customersData.pageInfo.endCursor;
+          pageCount++;
+
+          console.log(
+            `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
+          );
         }
+
+        return allCustomers;
+      } catch (error) {
+        console.error("Error fetching customers:", error);
+        throw error;
       }
-    `;
-
-    const response = await admin.graphql(customersQuery, {
-      variables: {
-        first: 250, // Get first 250 customers for dashboard metrics
-      },
-    });
-
-    const data = await response.json();
-
-    if (data.errors) {
-      console.error("GraphQL errors:", data.errors);
-      throw new Error("Failed to fetch customers from Shopify");
     }
 
-    const customers =
-      data.data?.customers?.edges?.map((edge: any) => edge.node) || [];
+    const customers = await fetchAllCustomers();
 
-    // Calculate dashboard metrics from Shopify data
-    const totalCustomers = customers.length;
-
-    // Calculate spending metrics
-    let totalSpent = 0;
-    let monthSpent = 0;
-    let yearSpent = 0;
-
+    // Calculate spending for different time periods using EST timezone
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
 
-    // Calculate tier counts and spending
-    const tierCounts = {
+    // Convert to EST (UTC-5) or EDT (UTC-4) - JavaScript handles DST automatically
+    const estOffset = -5 * 60; // EST is UTC-5
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    const estTime = new Date(utc + estOffset * 60000);
+
+    // Use EST time for "today" calculations
+    const today = new Date(
+      estTime.getFullYear(),
+      estTime.getMonth(),
+      estTime.getDate(),
+    );
+    const firstDayOfMonth = new Date(
+      estTime.getFullYear(),
+      estTime.getMonth(),
+      1,
+    );
+    const firstDayOfYear = new Date(estTime.getFullYear(), 0, 1);
+
+    // Calculate total spent (all time)
+    const totalSpent = customers.reduce(
+      (sum: number, customer: any) =>
+        sum + parseFloat(customer.amountSpent?.amount || "0"),
+      0,
+    );
+
+    // Calculate month and year spending from orders
+    let monthSpending = 0;
+    let yearSpending = 0;
+
+    customers.forEach((customer: any) => {
+      const orders =
+        customer.orders?.edges?.map((edge: any) => edge.node) || [];
+
+      orders.forEach((order: any) => {
+        const orderDate = new Date(order.createdAt);
+        const orderAmount = parseFloat(
+          order.totalPriceSet?.shopMoney?.amount || "0",
+        );
+
+        if (orderDate >= firstDayOfMonth) {
+          monthSpending += orderAmount;
+        }
+
+        if (orderDate >= firstDayOfYear) {
+          yearSpending += orderAmount;
+        }
+      });
+    });
+
+    // Calculate active customers (with orders in the last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const activeCustomers = customers.filter((customer: any) => {
+      if (!customer.lastOrder) return false;
+      const orderDate = new Date(customer.lastOrder.createdAt);
+      return orderDate >= thirtyDaysAgo;
+    }).length;
+
+    // Determine customer tiers based on spending
+    const customerTiers = customers.map((customer: any) => {
+      const spent = parseFloat(customer.amountSpent?.amount || "0");
+      let tier = "Featherweight";
+
+      // Check if customer has "Reigning Champion" tag (invite-only tier)
+      const hasReigningChampionTag =
+        customer.tags &&
+        customer.tags.some(
+          (tag: string) => tag.toLowerCase() === "reigning champion",
+        );
+
+      if (hasReigningChampionTag) {
+        tier = "Reigning Champion"; // Manually assigned tier overrides spending tier
+      } else if (spent >= 25000) {
+        tier = "Heavyweight";
+      } else if (spent >= 5000) {
+        tier = "Welterweight";
+      } else if (spent >= 1500) {
+        tier = "Lightweight";
+      }
+
+      return {
+        ...customer,
+        tier,
+      };
+    });
+
+    // Count customers in each tier
+    const tierCounts: Record<string, number> = {
       Featherweight: 0,
       Lightweight: 0,
       Welterweight: 0,
@@ -88,123 +225,106 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       "Reigning Champion": 0,
     };
 
-    const topSpenders: Array<{
-      id: string;
-      name: string;
-      spent: number;
-      tier: string;
-      orders: number;
-    }> = [];
+    customerTiers.forEach((customer: any) => {
+      const tier = customer.tier as string;
+      if (tierCounts[tier] !== undefined) {
+        tierCounts[tier]++;
+      }
+    });
 
-    customers.forEach((customer: any) => {
-      const spent = parseFloat(customer.amountSpent?.amount || "0");
-      totalSpent += spent;
+    // Today is already set to beginning of day in EST
+    // No need to modify hours since we created it from EST date components
 
-      // Calculate tier based on spending (using points logic: $1 = 1 point)
-      let tier = "Featherweight";
-      if (spent >= 100000) tier = "Reigning Champion";
-      else if (spent >= 25000) tier = "Heavyweight";
-      else if (spent >= 5000) tier = "Welterweight";
-      else if (spent >= 1500) tier = "Lightweight";
+    // Process customers to add today's and this month's spending
+    const processedCustomers = customerTiers.map((customer: any) => {
+      // Extract orders if available
+      const orders =
+        customer.orders?.edges?.map((edge: any) => edge.node) || [];
 
-      tierCounts[tier as keyof typeof tierCounts]++;
+      // Calculate today's spending (EST timezone)
+      const todaySpending = orders.reduce((sum: number, order: any) => {
+        const orderDate = new Date(order.createdAt);
 
-      // Add to top spenders list
-      topSpenders.push({
-        id: customer.id.replace("gid://shopify/Customer/", ""),
+        // Convert order date to EST for comparison
+        const orderUtc =
+          orderDate.getTime() + orderDate.getTimezoneOffset() * 60000;
+        const orderEst = new Date(orderUtc + estOffset * 60000);
+
+        // Check if order was placed today (EST)
+        const orderDateOnly = new Date(
+          orderEst.getFullYear(),
+          orderEst.getMonth(),
+          orderEst.getDate(),
+        );
+
+        if (orderDateOnly.getTime() === today.getTime()) {
+          return (
+            sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
+          );
+        }
+        return sum;
+      }, 0);
+
+      // Calculate this month's spending
+      const monthSpending = orders.reduce((sum: number, order: any) => {
+        const orderDate = new Date(order.createdAt);
+        if (orderDate >= firstDayOfMonth) {
+          return (
+            sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
+          );
+        }
+        return sum;
+      }, 0);
+
+      return {
+        ...customer,
+        todaySpending,
+        monthSpending,
         name:
           `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
-          customer.email ||
           "Unknown",
-        spent,
-        tier,
-        orders: customer.numberOfOrders || 0,
-      });
-
-      // Calculate time-based spending (approximate - we don't have order dates here)
-      const customerCreated = new Date(customer.createdAt);
-      if (customerCreated >= startOfMonth) {
-        monthSpent += spent * 0.1; // Rough estimate
-      }
-      if (customerCreated >= startOfYear) {
-        yearSpent += spent * 0.3; // Rough estimate
-      }
+      };
     });
 
-    // Sort top spenders
-    topSpenders.sort((a, b) => b.spent - a.spent);
-    const topCompetitorsToday = topSpenders.slice(0, 5).map((customer) => ({
-      id: customer.id,
-      name: customer.name,
-      tier: customer.tier,
-      spent: `$${customer.spent.toFixed(2)}`,
-      orders: customer.orders,
-    }));
+    // Get top competitors for today
+    const todayCompetitors = processedCustomers
+      .filter((customer: any) => customer.todaySpending > 0)
+      .sort((a: any, b: any) => b.todaySpending - a.todaySpending)
+      .slice(0, 5);
 
-    const topCompetitorsMonth = topSpenders.slice(0, 5).map((customer) => ({
-      id: customer.id,
-      name: customer.name,
-      tier: customer.tier,
-      spent: `$${customer.spent.toFixed(2)}`,
-      orders: customer.orders,
-    }));
-
-    const loadTime = Date.now() - startTime;
-    console.log(`Dashboard loaded in ${loadTime}ms`);
-
-    // Format the data for the UI
-    const stats = {
-      totalCustomers,
-      activeCustomers: Math.floor(totalCustomers * 0.3), // Rough estimate
-      totalSpent: totalSpent.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-      monthSpent: monthSpent.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-      yearSpent: yearSpent.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-      currentYear: new Date().getFullYear(),
-      topTier: "Reigning Champion",
-      topTierCustomers: tierCounts["Reigning Champion"],
-    };
+    // Get top competitors for this month
+    const monthCompetitors = processedCustomers
+      .filter((customer: any) => customer.monthSpending > 0)
+      .sort((a: any, b: any) => b.monthSpending - a.monthSpending)
+      .slice(0, 5);
 
     return json({
-      stats,
-      topCompetitorsToday,
-      topCompetitorsMonth,
-      tierCounts,
-      cacheStatus: {
-        isCached: false,
-        lastCalculated: new Date(),
-        cacheAge: 0,
-        isValid: true,
+      stats: {
+        totalCustomers: customers.length,
+        activeCustomers,
+        totalSpent: totalSpent.toFixed(2),
+        monthSpending: monthSpending.toFixed(2),
+        yearSpending: yearSpending.toFixed(2),
+        currentYear: estTime.getFullYear(),
+        topTierCustomers: tierCounts["Reigning Champion"],
       },
-      loadTime,
-      lastCalculated: new Date(),
+      tierCounts,
+      todayCompetitors,
+      monthCompetitors,
+      customers: processedCustomers,
     });
   } catch (error) {
-    console.error("Error fetching dashboard data:", error);
-
-    // Return empty data in case of error
-    const currentYear = new Date().getFullYear();
+    console.error("Dashboard loader error:", error);
     return json({
       stats: {
         totalCustomers: 0,
         activeCustomers: 0,
         totalSpent: "0.00",
-        monthSpent: "0.00",
-        yearSpent: "0.00",
-        currentYear: currentYear,
-        topTier: "Reigning Champion",
+        monthSpending: "0.00",
+        yearSpending: "0.00",
+        currentYear: new Date().getFullYear(),
         topTierCustomers: 0,
       },
-      topCompetitorsToday: [],
-      topCompetitorsMonth: [],
       tierCounts: {
         Featherweight: 0,
         Lightweight: 0,
@@ -212,78 +332,57 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         Heavyweight: 0,
         "Reigning Champion": 0,
       },
-      cacheStatus: {
-        isCached: false,
-        lastCalculated: null,
-        cacheAge: null,
-        isValid: false,
-      },
-      loadTime: 0,
-      lastCalculated: new Date(),
+      todayCompetitors: [],
+      monthCompetitors: [],
+      customers: [],
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
 
 export default function Index() {
-  const {
-    stats,
-    topCompetitorsToday,
-    topCompetitorsMonth,
-    cacheStatus,
-    loadTime,
-    lastCalculated,
-  } = useLoaderData<typeof loader>();
+  const { stats, tierCounts, todayCompetitors, monthCompetitors, error } =
+    useLoaderData<typeof loader>() as any;
 
-  // State for total spent filter and selected customer
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [spendingFilter, setSpendingFilter] = useState<
     "month" | "year" | "total"
   >("month");
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
 
-  // Handle opening and closing the customer loyalty card
   const handleViewCustomer = useCallback((customer: any) => {
     setSelectedCustomer(customer);
   }, []);
 
-  const handleCloseCustomerCard = useCallback(() => {
+  const handleCloseCustomerModal = useCallback(() => {
     setSelectedCustomer(null);
   }, []);
 
-  // Get the appropriate spending amount based on filter
-  const displayedSpending =
-    spendingFilter === "month"
-      ? stats.monthSpent
-      : spendingFilter === "year"
-        ? stats.yearSpent
-        : stats.totalSpent;
-
-  // Recreate tier counts for the UI
-  const tierCounts = {
-    Featherweight: 0,
-    Lightweight: 0,
-    Welterweight: 0,
-    Heavyweight: 0,
-    "Reigning Champion": stats.topTierCustomers || 0,
-  };
-
+  // Function to get tier color
   const getTierColor = (tier: string) => {
     switch (tier) {
       case "Reigning Champion":
         return "success";
       case "Heavyweight":
-        return "info";
+        return "attention";
       case "Welterweight":
         return "warning";
       case "Lightweight":
-        return "attention";
-      case "Featherweight":
-        return "new";
+        return "info";
       default:
-        return "new";
+        return "subdued";
     }
   };
 
-  const todayCompetitorRows = topCompetitorsToday.map((customer: any) => [
+  // Calculate displayed spending based on filter
+  const displayedSpending =
+    spendingFilter === "month"
+      ? stats.monthSpending
+      : spendingFilter === "year"
+        ? stats.yearSpending
+        : stats.totalSpent;
+
+  // Format today's competitors for DataTable
+  const todayCompetitorRows = todayCompetitors.map((customer: any) => [
     <Text key={`name-${customer.id}`} variant="bodyMd" as="span">
       {customer.name}
     </Text>,
@@ -294,10 +393,10 @@ export default function Index() {
       {customer.tier}
     </Badge>,
     <Text key={`spent-${customer.id}`} variant="bodyMd" as="span">
-      {customer.spent}
+      ${customer.todaySpending.toFixed(2)}
     </Text>,
     <Text key={`orders-${customer.id}`} variant="bodyMd" as="span">
-      {customer.orders}
+      {customer.numberOfOrders || 0}
     </Text>,
     <Button
       key={`view-${customer.id}`}
@@ -309,61 +408,40 @@ export default function Index() {
     </Button>,
   ]);
 
-  return (
-    <Page fullWidth>
-      {selectedCustomer && (
-        <CustomerLoyaltyCard
-          customer={selectedCustomer}
-          onClose={handleCloseCustomerCard}
-        />
-      )}
-      <BlockStack gap="500">
-        {/* Cache Status Banner */}
-        {cacheStatus && (
-          <Banner
-            title={
-              cacheStatus.isValid
-                ? `Data cached (${Math.floor((cacheStatus.cacheAge || 0) / 60)} min ago)`
-                : "Data refreshed"
-            }
-            tone={cacheStatus.isValid ? "info" : "success"}
-            action={{
-              content: "Refresh Data",
-              url: "?refresh=true",
-            }}
-          >
-            <Text as="p" variant="bodySm">
-              {cacheStatus.isValid
-                ? `Dashboard loaded in ${loadTime}ms using cached data. Last calculated: ${new Date(lastCalculated).toLocaleTimeString()}`
-                : `Dashboard refreshed in ${loadTime}ms with fresh data from Shopify.`}
-            </Text>
-          </Banner>
-        )}
+  // Format month competitors for DataTable
+  const topCompetitorsMonth = monthCompetitors.map((customer: any) => ({
+    ...customer,
+    spent: `$${customer.monthSpending.toFixed(2)}`,
+    orders: customer.numberOfOrders || 0,
+  }));
 
+  if (error) {
+    return (
+      <Page>
         <Layout>
           <Layout.Section>
             <Card>
-              <BlockStack gap="400">
-                <InlineStack align="space-between">
-                  <Text as="h2" variant="headingLg">
-                    TKO Loyalty Program Dashboard
-                  </Text>
-                  <Button
-                    variant="secondary"
-                    icon={RefreshIcon}
-                    url="?refresh=true"
-                  >
-                    Refresh Data
-                  </Button>
-                </InlineStack>
-                <Text as="p" variant="bodyMd">
-                  Welcome to your loyalty program dashboard. Here you can manage
-                  your customers, tiers, rewards, and view key metrics.
-                </Text>
-              </BlockStack>
+              <Text variant="headingMd" as="h2">
+                Error Loading Dashboard
+              </Text>
+              <Text as="p">{error}</Text>
             </Card>
           </Layout.Section>
+        </Layout>
+      </Page>
+    );
+  }
 
+  return (
+    <Page>
+      {selectedCustomer && (
+        <CustomerLoyaltyCard
+          customer={selectedCustomer}
+          onClose={handleCloseCustomerModal}
+        />
+      )}
+      <BlockStack gap="500">
+        <Layout>
           <Layout.Section>
             <Grid>
               <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>

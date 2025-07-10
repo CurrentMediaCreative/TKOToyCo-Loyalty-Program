@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useSubmit } from "@remix-run/react";
@@ -75,151 +75,97 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
-  const url = new URL(request.url);
 
-  // Get query parameters
-  const page = parseInt(url.searchParams.get("page") || "1");
-  const search = url.searchParams.get("search") || "";
+  // Function to fetch all customers using cursor-based pagination
+  async function fetchAllCustomers() {
+    let allCustomers: any[] = [];
+    let hasNextPage = true;
+    let cursor: string | null = null;
+    let pageCount = 0;
+    const MAX_PAGES = 20; // Safety limit to prevent infinite loops
+    const PER_PAGE = 250; // Maximum allowed by Shopify
+
+    try {
+      while (hasNextPage && pageCount < MAX_PAGES) {
+        // Build the query with or without cursor
+        const queryVariables: { first: number; after?: string } = cursor
+          ? { first: PER_PAGE, after: cursor }
+          : { first: PER_PAGE };
+
+        const response: any = await admin.graphql(
+          `#graphql
+            query GetCustomers($first: Int!, $after: String) {
+              customers(first: $first, after: $after) {
+                edges {
+                  node {
+                    id
+                    firstName
+                    lastName
+                    email
+                    phone
+                    numberOfOrders
+                    amountSpent {
+                      amount
+                    }
+                    tags
+                    createdAt
+                    defaultAddress {
+                      city
+                      province
+                      country
+                    }
+                  }
+                  cursor
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+              }
+            }`,
+          { variables: queryVariables },
+        );
+
+        const responseJson: any = await response.json();
+        const customersData: any = responseJson.data?.customers;
+
+        if (!customersData) {
+          console.error("No customer data returned from API");
+          break;
+        }
+
+        // Extract customers from this page
+        const pageCustomers = customersData.edges.map((edge: any) => edge.node);
+        allCustomers = [...allCustomers, ...pageCustomers];
+
+        // Update pagination info for next iteration
+        hasNextPage = customersData.pageInfo.hasNextPage;
+        cursor = customersData.pageInfo.endCursor;
+        pageCount++;
+
+        console.log(
+          `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
+        );
+      }
+
+      return allCustomers;
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+      throw error;
+    }
+  }
 
   try {
-    console.log(`Customers loader: page=${page}, search="${search}"`);
-    const startTime = Date.now();
-
-    // Fetch customers from Shopify API
-    const customersPerPage = 50;
-
-    // Build GraphQL query for customers
-    let query = `
-      query getCustomers($first: Int!, $query: String, $after: String) {
-        customers(first: $first, query: $query, after: $after) {
-          edges {
-            node {
-              id
-              firstName
-              lastName
-              email
-              phone
-              amountSpent {
-                amount
-                currencyCode
-              }
-              numberOfOrders
-              defaultAddress {
-                city
-                province
-                country
-              }
-              tags
-              createdAt
-              updatedAt
-            }
-            cursor
-          }
-          pageInfo {
-            hasNextPage
-            hasPreviousPage
-            startCursor
-            endCursor
-          }
-        }
-      }
-    `;
-
-    // Build search query for Shopify
-    let shopifyQuery = "";
-    if (search) {
-      shopifyQuery = `email:*${search}* OR first_name:*${search}* OR last_name:*${search}* OR phone:*${search}*`;
-    }
-
-    // Calculate cursor for pagination
-    let after = null;
-    if (page > 1) {
-      // For simplicity, we'll use a basic offset approach
-      // In a production app, you'd want to store cursors properly
-      const skipCount = (page - 1) * customersPerPage;
-      if (skipCount > 0) {
-        // Get the cursor for the previous page
-        const prevPageQuery = await admin.graphql(query, {
-          variables: {
-            first: skipCount,
-            query: shopifyQuery || null,
-          },
-        });
-        const prevPageData = await prevPageQuery.json();
-        if (prevPageData.data?.customers?.edges?.length > 0) {
-          after =
-            prevPageData.data.customers.edges[
-              prevPageData.data.customers.edges.length - 1
-            ].cursor;
-        }
-      }
-    }
-
-    const response = await admin.graphql(query, {
-      variables: {
-        first: customersPerPage,
-        query: shopifyQuery || null,
-        after,
-      },
-    });
-
-    const data = await response.json();
-
-    if (data.errors) {
-      console.error("GraphQL errors:", data.errors);
-      throw new Error("Failed to fetch customers from Shopify");
-    }
-
-    const customers =
-      data.data?.customers?.edges?.map((edge: any) => edge.node) || [];
-    const pageInfo = data.data?.customers?.pageInfo || {};
-
-    // Get loyalty data for these customers from local database
-    const { getCustomerByShopifyId } = await import(
-      "../services/customer.server"
-    );
-
-    // Enhance customers with loyalty data
-    const enhancedCustomers = await Promise.all(
-      customers.map(async (customer: any) => {
-        const shopifyId = parseInt(
-          customer.id.replace("gid://shopify/Customer/", ""),
-        );
-        const loyaltyCustomer = await getCustomerByShopifyId(shopifyId);
-
-        return {
-          ...customer,
-          // Add loyalty data if available
-          spendPoints: loyaltyCustomer?.spendPoints || 0,
-          bonusPoints: loyaltyCustomer?.bonusPoints || 0,
-          totalPoints: loyaltyCustomer?.totalPoints || 0,
-          tier: loyaltyCustomer?.tier || null,
-        };
-      }),
-    );
-
-    const loadTime = Date.now() - startTime;
-    console.log(`Customers loaded in ${loadTime}ms`);
-
+    const customers = await fetchAllCustomers();
     return json({
-      customers: enhancedCustomers,
-      totalCount: customers.length, // Note: Shopify doesn't provide total count easily
-      currentPage: page,
-      hasNextPage: pageInfo.hasNextPage || false,
-      hasPrevPage: page > 1,
-      loadTime,
+      customers,
       success: true,
-      error: null,
+      error: null, // Add error property with null value for success case
     });
   } catch (error) {
     console.error("Error in loader:", error);
     return json({
       customers: [],
-      totalCount: 0,
-      currentPage: 1,
-      hasNextPage: false,
-      hasPrevPage: false,
-      loadTime: 0,
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",
     });
@@ -301,15 +247,27 @@ export default function CustomersPage() {
   };
 
   // Function to determine customer tier based on total points
-  const getCustomerTier = (amountSpent: any, bonusPoints: number = 0) => {
-    const spent = parseFloat(amountSpent?.amount || "0");
-    const totalPoints = spent + bonusPoints; // $1 = 1 point, plus any bonus points
+  const getCustomerTier = (customer: any) => {
+    const spent = parseFloat(customer.amountSpent?.amount || "0");
 
-    if (totalPoints >= 100000) return "Reigning Champion";
-    if (totalPoints >= 25000) return "Heavyweight";
-    if (totalPoints >= 5000) return "Welterweight";
-    if (totalPoints >= 1500) return "Lightweight";
-    return "Featherweight";
+    // Check if customer has "Reigning Champion" tag (invite-only tier)
+    const hasReigningChampionTag =
+      customer.tags &&
+      customer.tags.some(
+        (tag: string) => tag.toLowerCase() === "reigning champion",
+      );
+
+    if (hasReigningChampionTag) {
+      return "Reigning Champion"; // Manually assigned tier overrides spending tier
+    } else if (spent >= 25000) {
+      return "Heavyweight";
+    } else if (spent >= 5000) {
+      return "Welterweight";
+    } else if (spent >= 1500) {
+      return "Lightweight";
+    } else {
+      return "Featherweight";
+    }
   };
 
   // Function to get tier color
@@ -318,172 +276,174 @@ export default function CustomersPage() {
       case "Reigning Champion":
         return "success";
       case "Heavyweight":
-        return "info";
+        return "attention";
       case "Welterweight":
         return "warning";
       case "Lightweight":
-        return "attention";
-      case "Featherweight":
-        return "new";
+        return "info";
       default:
-        return "new";
+        return "subdued";
     }
   };
 
-  // Handle sorting when a column header is clicked
-  const handleSort = useCallback(
-    (field: string) => {
-      if (sortField === field) {
-        // Toggle direction if clicking the same field
-        setSortDirection(
-          sortDirection === "ascending" ? "descending" : "ascending",
-        );
-      } else {
-        // Set new field and default to ascending
-        setSortField(field);
-        setSortDirection("ascending");
-      }
-    },
-    [sortField, sortDirection],
-  );
+  // Process customers to add calculated fields
+  const processedCustomers = useMemo(() => {
+    return customers.map((customer: any) => {
+      const tier = getCustomerTier(customer);
+      const spentAmount = parseFloat(customer.amountSpent?.amount || "0");
 
-  // Get sort indicator for column headers
+      // Calculate total points (for now, using spent amount as base)
+      const totalPoints = Math.floor(spentAmount); // 1 point per dollar spent
+
+      // For now, bonus points are 0 (will be fetched from database later)
+      const bonusPoints = 0;
+
+      // Format location
+      const address = customer.defaultAddress;
+      const location = address
+        ? `${address.city || ""}, ${address.province || ""}, ${address.country || ""}`.replace(
+            /^,\s*|,\s*$/g,
+            "",
+          )
+        : "No address";
+
+      return {
+        ...customer,
+        tier,
+        totalPoints,
+        bonusPoints,
+        spentAmount,
+        location,
+        name:
+          `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
+          "Unknown",
+      };
+    });
+  }, [customers]);
+
+  // Filter customers based on search and selected tab
+  const filteredCustomers = useMemo(() => {
+    let filtered = processedCustomers;
+
+    // Filter by search
+    if (searchValue) {
+      const searchLower = searchValue.toLowerCase();
+      filtered = filtered.filter(
+        (customer: any) =>
+          customer.name.toLowerCase().includes(searchLower) ||
+          customer.email?.toLowerCase().includes(searchLower) ||
+          customer.phone?.toLowerCase().includes(searchLower),
+      );
+    }
+
+    // Filter by tier tab
+    if (selectedTab > 0) {
+      const tierMap = [
+        "all",
+        "Featherweight",
+        "Lightweight",
+        "Welterweight",
+        "Heavyweight",
+        "Reigning Champion",
+      ];
+      const selectedTier = tierMap[selectedTab];
+      if (selectedTier !== "all") {
+        filtered = filtered.filter(
+          (customer: any) => customer.tier === selectedTier,
+        );
+      }
+    }
+
+    return filtered;
+  }, [processedCustomers, searchValue, selectedTab]);
+
+  // Sort customers
+  const sortedCustomers = useMemo(() => {
+    const sorted = [...filteredCustomers];
+    sorted.sort((a: any, b: any) => {
+      let aValue, bValue;
+
+      switch (sortField) {
+        case "name":
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case "email":
+          aValue = a.email?.toLowerCase() || "";
+          bValue = b.email?.toLowerCase() || "";
+          break;
+        case "tier":
+          aValue = a.tier;
+          bValue = b.tier;
+          break;
+        case "points":
+          aValue = a.totalPoints;
+          bValue = b.totalPoints;
+          break;
+        case "bonus":
+          aValue = a.bonusPoints;
+          bValue = b.bonusPoints;
+          break;
+        case "spent":
+          aValue = a.spentAmount;
+          bValue = b.spentAmount;
+          break;
+        case "orders":
+          aValue = a.numberOfOrders || 0;
+          bValue = b.numberOfOrders || 0;
+          break;
+        case "location":
+          aValue = a.location.toLowerCase();
+          bValue = b.location.toLowerCase();
+          break;
+        default:
+          aValue = a.spentAmount;
+          bValue = b.spentAmount;
+      }
+
+      if (typeof aValue === "string") {
+        return sortDirection === "ascending"
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      } else {
+        return sortDirection === "ascending"
+          ? aValue - bValue
+          : bValue - aValue;
+      }
+    });
+
+    return sorted;
+  }, [filteredCustomers, sortField, sortDirection]);
+
+  // Pagination
+  const totalPages = Math.ceil(sortedCustomers.length / customersPerPage);
+  const startIndex = (currentPage - 1) * customersPerPage;
+  const endIndex = startIndex + customersPerPage;
+  const currentCustomers = sortedCustomers.slice(startIndex, endIndex);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(
+        sortDirection === "ascending" ? "descending" : "ascending",
+      );
+    } else {
+      setSortField(field);
+      setSortDirection("descending");
+    }
+  };
+
   const getSortIndicator = (field: string) => {
     if (sortField !== field) return "";
     return sortDirection === "ascending" ? " ↑" : " ↓";
   };
 
-  // Filter customers by search term and selected tab
-  const filteredCustomers = customers
-    .map((customer: any) => {
-      // Calculate points
-      const spentAmount = parseFloat(customer.amountSpent?.amount || "0");
-      const bonusPoints = 0; // We'll get this from the database in the future
-      const totalPoints = spentAmount + bonusPoints;
-
-      // Add tier and points to each customer object
-      return {
-        ...customer,
-        tier: getCustomerTier(customer.amountSpent, bonusPoints),
-        name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
-        location: customer.defaultAddress
-          ? `${customer.defaultAddress.city || ""}, ${customer.defaultAddress.province || ""} ${customer.defaultAddress.country || ""}`
-          : "No address",
-        spent: `$${spentAmount.toFixed(2)}`, // Format as string for CustomerLoyaltyCard compatibility
-        spentAmount: spentAmount,
-        spendPoints: spentAmount,
-        bonusPoints: bonusPoints,
-        totalPoints: totalPoints,
-        orders: customer.numberOfOrders || 0, // Ensure orders is available
-      };
-    })
-    .filter((customer: any) => {
-      // Filter by tier if a tab other than "All" is selected
-      if (selectedTab > 0 && customer.tier !== tabs[selectedTab].content) {
-        return false;
-      }
-
-      // Filter by search term
-      if (!searchValue) return true;
-
-      const searchRegex = new RegExp(searchValue, "i");
-      return (
-        searchRegex.test(customer.name) ||
-        searchRegex.test(customer.email || "") ||
-        searchRegex.test(customer.phone || "")
-      );
-    });
-
-  // Sort the filtered customers
-  const sortedCustomers = useMemo(
-    () =>
-      [...filteredCustomers].sort((a, b) => {
-        let valueA, valueB;
-
-        switch (sortField) {
-          case "name":
-            valueA = a.name || "";
-            valueB = b.name || "";
-            break;
-          case "email":
-            valueA = a.email || "";
-            valueB = b.email || "";
-            break;
-          case "tier":
-            // Custom tier sorting by level instead of alphabetically
-            const tierOrder: Record<string, number> = {
-              Featherweight: 1,
-              Lightweight: 2,
-              Welterweight: 3,
-              Heavyweight: 4,
-              "Reigning Champion": 5,
-            };
-            valueA = tierOrder[a.tier as string] || 0;
-            valueB = tierOrder[b.tier as string] || 0;
-            break;
-          case "points":
-            valueA = a.totalPoints || 0;
-            valueB = b.totalPoints || 0;
-            break;
-          case "bonus":
-            valueA = a.bonusPoints || 0;
-            valueB = b.bonusPoints || 0;
-            break;
-          case "spent":
-            valueA = a.spentAmount;
-            valueB = b.spentAmount;
-            break;
-          case "orders":
-            valueA = a.numberOfOrders || 0;
-            valueB = b.numberOfOrders || 0;
-            break;
-          case "location":
-            valueA = a.location || "";
-            valueB = b.location || "";
-            break;
-          default:
-            valueA = a.name || "";
-            valueB = b.name || "";
-        }
-
-        // For string comparisons
-        if (typeof valueA === "string" && typeof valueB === "string") {
-          return sortDirection === "ascending"
-            ? valueA.localeCompare(valueB)
-            : valueB.localeCompare(valueA);
-        }
-
-        // For numeric comparisons
-        return sortDirection === "ascending"
-          ? (valueA as number) - (valueB as number)
-          : (valueB as number) - (valueA as number);
-      }),
-    [filteredCustomers, sortField, sortDirection],
-  );
-
-  // Get current page customers
-  const indexOfLastCustomer = currentPage * customersPerPage;
-  const indexOfFirstCustomer = indexOfLastCustomer - customersPerPage;
-  const currentCustomers = sortedCustomers.slice(
-    indexOfFirstCustomer,
-    indexOfLastCustomer,
-  );
-
-  // Calculate total pages
-  const totalPages = Math.ceil(sortedCustomers.length / customersPerPage);
-
-  // Change page
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
   };
 
-  // Handle bonus points editing
-  const handleBonusPointsEdit = (
-    customerId: string,
-    currentBonusPoints: number,
-  ) => {
+  const handleBonusPointsEdit = (customerId: string, currentValue: number) => {
     setEditingBonusPoints(customerId);
-    setBonusPointsValue(currentBonusPoints.toString());
+    setBonusPointsValue(currentValue.toString());
   };
 
   const handleBonusPointsSave = (customerId: string) => {
