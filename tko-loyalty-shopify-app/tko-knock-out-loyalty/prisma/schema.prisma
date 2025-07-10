@@ -84,7 +84,7 @@ model Customer {
 }
 
 model PointEvent {
-  id              String             @id @default(uuid())
+  id              String                  @id @default(uuid())
   name            String
   description     String?
   startDate       DateTime
@@ -93,15 +93,16 @@ model PointEvent {
   tags            String?
   collections     String?
   productIds      String?
-  channel         String             @default("both")
+  channel         String                  @default("both")
   bonusPercentage Float
-  isActive        Boolean            @default(true)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  usageCount      Int                @default(0)
-  pointsAwarded   Float              @default(0)
+  isActive        Boolean                 @default(true)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  usageCount      Int                     @default(0)
+  pointsAwarded   Float                   @default(0)
   lastUsed        DateTime?
   transactions    PointTransaction[]
+  orderProcessing EventOrderProcessing[]
 
   @@map("PointEvent")
 }
@@ -135,6 +136,25 @@ model PendingOrder {
   @@index([shopifyOrderId])
   @@index([customerId])
   @@map("PendingOrder")
+}
+
+model EventOrderProcessing {
+  id                 String     @id @default(uuid())
+  eventId            String
+  orderId            String
+  orderNumber        String
+  customerName       String?
+  orderTotal         Decimal    @db.Decimal(10, 2)
+  processed          Boolean    @default(false)
+  qualified          Boolean    @default(false)
+  bonusPointsAwarded Int        @default(0)
+  processedAt        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  event              PointEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, orderId])
+  @@map("EventOrderProcessing")
 }
 
 model DashboardMetrics {
