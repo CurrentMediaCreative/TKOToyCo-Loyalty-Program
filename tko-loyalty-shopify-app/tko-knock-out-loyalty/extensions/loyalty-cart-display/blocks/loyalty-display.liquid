@@ -319,11 +319,40 @@
         };
       }
 
+      // Get customer email if available
+      function getCustomerEmail() {
+        // Try to get customer email from Shopify customer object
+        if (window.Shopify && window.Shopify.customer && window.Shopify.customer.email) {
+          return window.Shopify.customer.email;
+        }
+        
+        // Try to get from global customer object
+        if (typeof customer !== 'undefined' && customer.email) {
+          return customer.email;
+        }
+        
+        // Try to get from meta tags
+        const customerEmailMeta = document.querySelector('meta[name="customer-email"]');
+        if (customerEmailMeta) {
+          return customerEmailMeta.getAttribute('content');
+        }
+        
+        return null;
+      }
+
       // Fetch loyalty data from our API
       async function loadLoyaltyData() {
         try {
           const cartTotal = getCartTotal();
-          const response = await fetch(`/apps/tko-loyalty/api/public/calculate-points?cartTotal=${cartTotal}`, {
+          const customerEmail = getCustomerEmail();
+          
+          // Build API URL
+          let apiUrl = `/apps/tko-loyalty/api/public/customer-loyalty?cartTotal=${cartTotal}`;
+          if (customerEmail) {
+            apiUrl += `&customerEmail=${encodeURIComponent(customerEmail)}`;
+          }
+          
+          const response = await fetch(apiUrl, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -374,10 +403,8 @@
           `;
 
           // Cart calculations section
-          if (cartTotal > 0) {
-            const basePoints = Math.floor(cartTotal);
-            const bonusPoints = data.bonusPointsFromCart || 0;
-            const totalCartPoints = basePoints + bonusPoints;
+          if (cartTotal > 0 && data.cartCalculation) {
+            const { basePoints, bonusPoints, totalPoints } = data.cartCalculation;
 
             html += `
               <div class="tko-cart-section">
@@ -395,7 +422,7 @@
                   ` : ''}
                   <div class="tko-cart-row tko-cart-total">
                     <span class="tko-cart-label">Total Points You'll Earn</span>
-                    <span class="tko-cart-value">+${totalCartPoints.toLocaleString()}</span>
+                    <span class="tko-cart-value">+${totalPoints.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
