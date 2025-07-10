@@ -534,22 +534,25 @@ export default function EventsPage() {
           <BlockStack gap="500">
             <Card>
               <BlockStack gap="400">
-                <Text as="h2" variant="headingMd">
-                  Point Events
-                </Text>
-                <Text as="p" variant="bodyMd">
-                  Create and manage bonus point events to reward your customers.
-                  Events can be store-wide, collection-based, or for specific
-                  products.
-                </Text>
+                <InlineStack align="space-between" blockAlign="center">
+                  <div>
+                    <Text as="h2" variant="headingMd">
+                      Point Events
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      Create and manage bonus point events to reward your
+                      customers. Events can be store-wide, collection-based, or
+                      for specific products.
+                    </Text>
+                  </div>
+                  <Button variant="primary" onClick={handleCreateEvent}>
+                    Create Event
+                  </Button>
+                </InlineStack>
 
                 {events.length === 0 ? (
                   <EmptyState
                     heading="No point events yet"
-                    action={{
-                      content: "Create Event",
-                      onAction: handleCreateEvent,
-                    }}
                     image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                   >
                     <p>
