@@ -21,7 +21,10 @@ import {
 import { ViewIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
-import { getCustomerByShopifyId } from "../services/customer.server";
+import {
+  getCustomerByShopifyId,
+  getCustomers,
+} from "../services/customer.server";
 import { adjustCustomerBonusPoints } from "../services/pointTransaction.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 
@@ -156,11 +159,42 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   try {
-    const customers = await fetchAllCustomers();
+    // Fetch customers from Shopify
+    const shopifyCustomers = await fetchAllCustomers();
+
+    // Fetch customers from our database
+    const dbCustomers = await getCustomers();
+
+    // Create a map of database customers by Shopify ID for quick lookup
+    const dbCustomerMap = new Map();
+    dbCustomers.forEach((dbCustomer: any) => {
+      const shopifyId = dbCustomer.shopifyId.toString();
+      dbCustomerMap.set(shopifyId, dbCustomer);
+    });
+
+    // Merge Shopify data with database data
+    const mergedCustomers = shopifyCustomers.map((shopifyCustomer: any) => {
+      const shopifyId = shopifyCustomer.id.replace(
+        "gid://shopify/Customer/",
+        "",
+      );
+      const dbCustomer = dbCustomerMap.get(shopifyId);
+
+      return {
+        ...shopifyCustomer,
+        // Add database fields if customer exists in our database
+        dbData: dbCustomer || null,
+        bonusPoints: dbCustomer?.bonusPoints || 0,
+        totalPoints: dbCustomer?.totalPoints || 0,
+        spendPoints: dbCustomer?.spendPoints || 0,
+        tier: dbCustomer?.tier || null,
+      };
+    });
+
     return json({
-      customers,
+      customers: mergedCustomers,
       success: true,
-      error: null, // Add error property with null value for success case
+      error: null,
     });
   } catch (error) {
     console.error("Error in loader:", error);
@@ -289,14 +323,14 @@ export default function CustomersPage() {
   // Process customers to add calculated fields
   const processedCustomers = useMemo(() => {
     return customers.map((customer: any) => {
-      const tier = getCustomerTier(customer);
       const spentAmount = parseFloat(customer.amountSpent?.amount || "0");
 
-      // Calculate total points (for now, using spent amount as base)
-      const totalPoints = Math.floor(spentAmount); // 1 point per dollar spent
-
-      // For now, bonus points are 0 (will be fetched from database later)
-      const bonusPoints = 0;
+      // Use database data if available, otherwise calculate from Shopify data
+      const dbData = customer.dbData;
+      const tier = dbData?.tier?.name || getCustomerTier(customer);
+      const totalPoints = dbData?.totalPoints || Math.floor(spentAmount);
+      const bonusPoints = dbData?.bonusPoints || 0;
+      const spendPoints = dbData?.spendPoints || Math.floor(spentAmount);
 
       // Format location
       const address = customer.defaultAddress;
@@ -312,6 +346,7 @@ export default function CustomersPage() {
         tier,
         totalPoints,
         bonusPoints,
+        spendPoints,
         spentAmount,
         location,
         name:
