@@ -32,9 +32,12 @@ import {
   updatePointEvent,
   deletePointEvent,
 } from "../services/pointEvent.server";
+import { getEventPointTransactions } from "../services/pointTransaction.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
+  const url = new URL(request.url);
+  const eventId = url.searchParams.get("eventId");
 
   try {
     // Load events
@@ -62,12 +65,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       handle: edge.node.handle,
     }));
 
-    return json({ events, collections });
+    // Load transactions for specific event if requested
+    let eventTransactions = null;
+    if (eventId) {
+      eventTransactions = await getEventPointTransactions(eventId);
+    }
+
+    return json({ events, collections, eventTransactions });
   } catch (error) {
     console.error("Error loading data:", error);
     return json({
       events: [],
       collections: [],
+      eventTransactions: null,
       error: "Failed to load data. Please try again later.",
     });
   }
@@ -203,11 +213,17 @@ interface Product {
 }
 
 export default function EventsPage() {
-  const { events = [], collections = [] } = useLoaderData<typeof loader>();
+  const {
+    events = [],
+    collections = [],
+    eventTransactions = null,
+  } = useLoaderData<typeof loader>();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isTransactionsModalOpen, setIsTransactionsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+  const [viewingEventId, setViewingEventId] = useState<string | null>(null);
   const submit = useSubmit();
 
   // Collections state
@@ -308,6 +324,25 @@ export default function EventsPage() {
     setDeletingEventId(id);
     setIsDeleteModalOpen(true);
   };
+
+  const handleViewTransactions = (eventId: string) => {
+    setViewingEventId(eventId);
+    // Use fetcher to load transactions for this event
+    window.location.href = `?eventId=${eventId}`;
+  };
+
+  // Handle opening transactions modal when data is loaded
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const eventId = url.searchParams.get("eventId");
+    if (eventId && eventTransactions) {
+      setViewingEventId(eventId);
+      setIsTransactionsModalOpen(true);
+      // Clear the URL parameter
+      url.searchParams.delete("eventId");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [eventTransactions]);
 
   const handleSaveEvent = () => {
     if (editingEvent) {
@@ -502,6 +537,12 @@ export default function EventsPage() {
       {event.pointsAwarded ? event.pointsAwarded.toFixed(0) : "0"}
     </Text>,
     <InlineStack key={`actions-${event.id}`} gap="200" align="end">
+      <Button
+        variant="tertiary"
+        onClick={() => handleViewTransactions(event.id)}
+      >
+        View Transactions
+      </Button>
       <Button
         variant="tertiary"
         onClick={() => handleEditEvent(event)}
@@ -829,6 +870,122 @@ export default function EventsPage() {
             Are you sure you want to delete this point event? This action cannot
             be undone.
           </Text>
+        </Modal.Section>
+      </Modal>
+
+      <Modal
+        open={isTransactionsModalOpen}
+        onClose={() => {
+          setIsTransactionsModalOpen(false);
+          setViewingEventId(null);
+        }}
+        title={`Transaction History - ${events.find((e) => e.id === viewingEventId)?.name || "Event"}`}
+        secondaryActions={[
+          {
+            content: "Close",
+            onAction: () => {
+              setIsTransactionsModalOpen(false);
+              setViewingEventId(null);
+            },
+          },
+        ]}
+      >
+        <Modal.Section>
+          {eventTransactions && eventTransactions.length > 0 ? (
+            <BlockStack gap="400">
+              <Text as="p" variant="bodyMd">
+                This event has triggered {eventTransactions.length} bonus point
+                transactions.
+              </Text>
+
+              <DataTable
+                columnContentTypes={["text", "text", "text", "text", "text"]}
+                headings={[
+                  "Date",
+                  "Customer",
+                  "Order ID",
+                  "Points Awarded",
+                  "Description",
+                ]}
+                rows={eventTransactions.map((transaction: any) => [
+                  <Text
+                    key={`date-${transaction.id}`}
+                    variant="bodyMd"
+                    as="span"
+                  >
+                    {new Date(transaction.createdAt).toLocaleDateString()}{" "}
+                    {new Date(transaction.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>,
+                  <div key={`customer-${transaction.id}`}>
+                    <Text variant="bodyMd" as="p" fontWeight="bold">
+                      {transaction.customer.firstName &&
+                      transaction.customer.lastName
+                        ? `${transaction.customer.firstName} ${transaction.customer.lastName}`
+                        : transaction.customer.email || "Unknown Customer"}
+                    </Text>
+                    {transaction.customer.email &&
+                      (transaction.customer.firstName ||
+                        transaction.customer.lastName) && (
+                        <Text variant="bodySm" as="p" tone="subdued">
+                          {transaction.customer.email}
+                        </Text>
+                      )}
+                  </div>,
+                  <Text
+                    key={`order-${transaction.id}`}
+                    variant="bodyMd"
+                    as="span"
+                  >
+                    {transaction.orderId || "N/A"}
+                  </Text>,
+                  <Text
+                    key={`points-${transaction.id}`}
+                    variant="bodyMd"
+                    as="span"
+                    fontWeight="bold"
+                  >
+                    +{transaction.amount}
+                  </Text>,
+                  <Text
+                    key={`desc-${transaction.id}`}
+                    variant="bodyMd"
+                    as="span"
+                  >
+                    {transaction.description || "Bonus points"}
+                  </Text>,
+                ])}
+              />
+
+              <div>
+                <Text as="p" variant="bodyMd" fontWeight="bold">
+                  Total Points Awarded:{" "}
+                  {eventTransactions.reduce(
+                    (sum: number, t: any) => sum + t.amount,
+                    0,
+                  )}
+                </Text>
+                <Text as="p" variant="bodyMd">
+                  Unique Customers:{" "}
+                  {
+                    new Set(eventTransactions.map((t: any) => t.customerId))
+                      .size
+                  }
+                </Text>
+              </div>
+            </BlockStack>
+          ) : (
+            <EmptyState
+              heading="No transactions yet"
+              image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+            >
+              <p>
+                This event hasn't triggered any bonus point transactions yet.
+              </p>
+            </EmptyState>
+          )}
         </Modal.Section>
       </Modal>
     </Page>
