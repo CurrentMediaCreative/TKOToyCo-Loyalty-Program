@@ -774,7 +774,7 @@ export default function Index() {
                           🏆 Today's Top Contenders
                         </Text>
                         <Text variant="bodySm" as="p" tone="subdued">
-                          Today's top customers
+                          Today's top contenders
                         </Text>
                       </BlockStack>
                       <Link to="/app/customers">
