@@ -315,10 +315,12 @@ export default function CustomersPage() {
         location: customer.defaultAddress
           ? `${customer.defaultAddress.city || ""}, ${customer.defaultAddress.province || ""} ${customer.defaultAddress.country || ""}`
           : "No address",
+        spent: `$${spentAmount.toFixed(2)}`, // Format as string for CustomerLoyaltyCard compatibility
         spentAmount: spentAmount,
         spendPoints: spentAmount,
         bonusPoints: bonusPoints,
         totalPoints: totalPoints,
+        orders: customer.numberOfOrders || 0, // Ensure orders is available
       };
     })
     .filter((customer: any) => {
