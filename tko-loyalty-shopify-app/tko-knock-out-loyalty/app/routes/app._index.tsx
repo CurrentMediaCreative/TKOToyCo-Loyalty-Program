@@ -804,9 +804,6 @@ export default function Index() {
                         ]}
                         rows={todayCompetitorRows}
                         hoverable
-                        truncate
-                        hasZebraStripingOnData={false}
-                        increasedTableDensity
                       />
                     ) : (
                       <EmptyState
@@ -862,9 +859,6 @@ export default function Index() {
                         ]}
                         rows={monthCompetitorRows}
                         hoverable
-                        truncate
-                        hasZebraStripingOnData={false}
-                        increasedTableDensity
                       />
                     ) : (
                       <EmptyState
@@ -945,7 +939,7 @@ export default function Index() {
                       />
                     </BlockStack>
                   </Grid.Cell>
-                  <Grid.Cell columnSpan={{ xs: 6, sm: 2, md: 2, lg: 2, xl: 2 }}>
+                  <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                     <BlockStack gap="200">
                       <InlineStack align="space-between">
                         <Text variant="bodyMd" as="span">
@@ -963,7 +957,7 @@ export default function Index() {
                       />
                     </BlockStack>
                   </Grid.Cell>
-                  <Grid.Cell columnSpan={{ xs: 6, sm: 2, md: 2, lg: 2, xl: 2 }}>
+                  <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                     <BlockStack gap="200">
                       <InlineStack align="space-between">
                         <Text variant="bodyMd" as="span">
