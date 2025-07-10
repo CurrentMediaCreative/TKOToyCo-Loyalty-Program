@@ -167,7 +167,6 @@ interface Collection {
   id: string;
   title: string;
   handle: string;
-  productsCount: number;
 }
 
 interface Product {
@@ -452,7 +451,7 @@ export default function EventsPage() {
     )
     .map((collection) => ({
       value: collection.id,
-      label: `${collection.title} (${collection.productsCount} products)`,
+      label: collection.title,
     }));
 
   const productOptions = products.map((product) => ({

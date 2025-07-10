@@ -14,7 +14,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               id
               title
               handle
-              productsCount
             }
           }
         }
@@ -26,7 +25,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       id: edge.node.id.replace("gid://shopify/Collection/", ""),
       title: edge.node.title,
       handle: edge.node.handle,
-      productsCount: edge.node.productsCount,
     }));
 
     return json({ collections });
