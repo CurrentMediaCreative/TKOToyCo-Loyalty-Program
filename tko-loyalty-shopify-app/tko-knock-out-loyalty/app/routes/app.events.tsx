@@ -34,16 +34,41 @@ import {
 } from "../services/pointEvent.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
 
   try {
+    // Load events
     const events = await getPointEvents();
-    return json({ events });
+
+    // Load collections
+    const response = await admin.graphql(`
+      query getCollections {
+        collections(first: 250) {
+          edges {
+            node {
+              id
+              title
+              handle
+            }
+          }
+        }
+      }
+    `);
+
+    const data = await response.json();
+    const collections = data.data.collections.edges.map((edge: any) => ({
+      id: edge.node.id.replace("gid://shopify/Collection/", ""),
+      title: edge.node.title,
+      handle: edge.node.handle,
+    }));
+
+    return json({ events, collections });
   } catch (error) {
-    console.error("Error loading events:", error);
+    console.error("Error loading data:", error);
     return json({
       events: [],
-      error: "Failed to load events. Please try again later.",
+      collections: [],
+      error: "Failed to load data. Please try again later.",
     });
   }
 };
@@ -178,7 +203,7 @@ interface Product {
 }
 
 export default function EventsPage() {
-  const { events = [] } = useLoaderData<typeof loader>();
+  const { events = [], collections = [] } = useLoaderData<typeof loader>();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
@@ -186,7 +211,6 @@ export default function EventsPage() {
   const submit = useSubmit();
 
   // Collections state
-  const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollections, setSelectedCollections] = useState<Collection[]>(
     [],
   );
@@ -197,24 +221,7 @@ export default function EventsPage() {
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [productQuery, setProductQuery] = useState("");
 
-  const collectionsFetcher = useFetcher();
   const productsFetcher = useFetcher();
-
-  // Load collections on mount
-  useEffect(() => {
-    collectionsFetcher.load("/api/collections");
-  }, [collectionsFetcher]);
-
-  // Handle collections data
-  useEffect(() => {
-    if (
-      collectionsFetcher.data &&
-      typeof collectionsFetcher.data === "object" &&
-      "collections" in collectionsFetcher.data
-    ) {
-      setCollections((collectionsFetcher.data as any).collections);
-    }
-  }, [collectionsFetcher.data]);
 
   // Handle products search with debouncing
   useEffect(() => {
@@ -276,7 +283,9 @@ export default function EventsPage() {
     // Set selected collections/products for display
     if (event.eventType === "collections" && event.collections) {
       const collectionIds = JSON.parse(event.collections);
-      const selected = collections.filter((c) => collectionIds.includes(c.id));
+      const selected = collections.filter((c: Collection) =>
+        collectionIds.includes(c.id),
+      );
       setSelectedCollections(selected);
     }
 
@@ -333,7 +342,7 @@ export default function EventsPage() {
       ) {
         formData.append(
           "collections",
-          selectedCollections.map((c) => c.id).join(","),
+          selectedCollections.map((c: Collection) => c.id).join(","),
         );
       }
 
@@ -401,10 +410,10 @@ export default function EventsPage() {
     (selected: string[]) => {
       if (selected.length > 0) {
         const value = selected[0];
-        const collection = collections.find((c) => c.id === value);
+        const collection = collections.find((c: Collection) => c.id === value);
         if (
           collection &&
-          !selectedCollections.find((c) => c.id === collection.id)
+          !selectedCollections.find((c: Collection) => c.id === collection.id)
         ) {
           setSelectedCollections([...selectedCollections, collection]);
         }
@@ -417,7 +426,7 @@ export default function EventsPage() {
   const handleCollectionRemove = useCallback(
     (collectionId: string) => {
       setSelectedCollections(
-        selectedCollections.filter((c) => c.id !== collectionId),
+        selectedCollections.filter((c: Collection) => c.id !== collectionId),
       );
     },
     [selectedCollections],
@@ -446,10 +455,10 @@ export default function EventsPage() {
   );
 
   const collectionOptions = collections
-    .filter((collection) =>
+    .filter((collection: Collection) =>
       collection.title.toLowerCase().includes(collectionQuery.toLowerCase()),
     )
-    .map((collection) => ({
+    .map((collection: Collection) => ({
       value: collection.id,
       label: collection.title,
     }));
