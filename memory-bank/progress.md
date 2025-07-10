@@ -331,50 +331,122 @@ See `memory-bank/taskWorkflow.md` for detailed task management procedures.
 
 ## Next Steps
 
-1. Points System Completion:
+### 10. Customer-Facing Loyalty Features Implementation
 
-   - Update tier display to show point thresholds instead of spend thresholds
-   - Ensure bonus points are properly displayed in the customer table
-   - Add Shopify profile integration for customer details
-   - Update metafields to include additional points information
+**PRIORITY: HIGH - Customer Experience Enhancement**
 
-2. Point Events System Implementation:
+#### Phase 1: Fix Checkout Extension (CRITICAL)
 
-   - Create database schema for point events with:
-     - Start and end date/time
-     - Event type (store-wide or product-specific)
-     - Product IDs for product-specific events
-     - Bonus percentage
-     - Event name and description
-   - Implement event management service
-   - Build admin interface for creating and managing events
-   - Integrate with checkout process to apply bonus points
+- [ ] **Step 1.1**: Create public API endpoint for point calculation
 
-3. Data Export Functionality:
+  - [ ] Create `/api/public/calculate-points` route that doesn't require admin auth
+  - [ ] Implement store identification via request headers/domain
+  - [ ] Add proper CORS handling for checkout domain
+  - [ ] Test API endpoint accessibility from checkout context
 
-   - Create new route for data exports
-   - Implement date range filtering
-   - Build UI for export configuration
-   - Implement Excel/CSV export generation
-   - Include comprehensive points data in exports
+- [ ] **Step 1.2**: Update checkout extension to use public API
 
-4. Annual Reset Mechanism:
+  - [ ] Modify checkout extension to call public API endpoint
+  - [ ] Add proper error handling and fallback calculations
+  - [ ] Test extension functionality in checkout environment
+  - [ ] Configure extension settings (disable admin-only mode)
 
-   - Design data structure for historical point tracking
-   - Implement scheduled task for annual reset (starting 2026)
-   - Create point transaction records for resets
-   - Build reporting for historical point data
+- [ ] **Step 1.3**: Deploy and activate checkout extension
+  - [ ] Build and deploy extension to Shopify app
+  - [ ] Activate extension in store checkout settings
+  - [ ] Test live checkout experience
+  - [ ] Verify points calculation accuracy
 
-5. Tier Benefits Automation:
+#### Phase 2: Customer Account Extension (NEW FEATURE)
 
-   - Implement automatic discount application based on tier
-   - Create checkout integration for tier benefits
-   - Build admin interface for managing tier-based discounts
-   - Implement tracking for benefit usage
+- [ ] **Step 2.1**: Create customer account extension structure
 
-6. Testing and Validation:
-   - Test point calculation accuracy
-   - Validate tier assignment based on points
-   - Test point events functionality
-   - Verify data export functionality
-   - Test Shopify profile integration
+  - [ ] Set up new extension targeting `customer-account.order-status.block.render`
+  - [ ] Create extension configuration and settings
+  - [ ] Set up TypeScript and build configuration
+  - [ ] Create basic extension scaffold
+
+- [ ] **Step 2.2**: Build customer loyalty status API
+
+  - [ ] Create `/api/public/customer-loyalty` endpoint
+  - [ ] Implement customer identification via Shopify customer ID
+  - [ ] Return current points, tier, and tier progress
+  - [ ] Add recent transaction history
+  - [ ] Include active promotional events
+
+- [ ] **Step 2.3**: Design customer loyalty card UI
+
+  - [ ] Create sleek loyalty card component with TKO branding
+  - [ ] Display current tier with boxing-themed badges
+  - [ ] Show points breakdown (spend + bonus)
+  - [ ] Add tier progress visualization
+  - [ ] Include recent point transactions
+  - [ ] Show active promotional events
+
+- [ ] **Step 2.4**: Implement customer account extension
+
+  - [ ] Build React component for loyalty card display
+  - [ ] Integrate with customer loyalty API
+  - [ ] Add loading states and error handling
+  - [ ] Implement responsive design for mobile
+  - [ ] Add proper accessibility features
+
+- [ ] **Step 2.5**: Deploy and test customer account extension
+  - [ ] Build and deploy extension to Shopify app
+  - [ ] Test extension in customer account pages
+  - [ ] Verify data accuracy and real-time updates
+  - [ ] Test across different devices and browsers
+
+#### Phase 3: Enhanced Features (FUTURE)
+
+- [ ] **Step 3.1**: Add tier benefits display
+
+  - [ ] Show current tier benefits and perks
+  - [ ] Display next tier benefits as motivation
+  - [ ] Add benefit usage tracking
+  - [ ] Implement benefit redemption interface
+
+- [ ] **Step 3.2**: Point earning opportunities
+
+  - [ ] Display active promotional events customers can participate in
+  - [ ] Show point earning potential for current cart
+  - [ ] Add social sharing for tier achievements
+  - [ ] Implement referral program integration
+
+- [ ] **Step 3.3**: Gamification elements
+  - [ ] Add achievement badges for milestones
+  - [ ] Implement point earning streaks
+  - [ ] Create tier celebration animations
+  - [ ] Add progress challenges and goals
+
+### 11. Points System Completion (ONGOING)
+
+- [ ] Update tier display to show point thresholds instead of spend thresholds
+- [ ] Ensure bonus points are properly displayed in the customer table
+- [ ] Add Shopify profile integration for customer details
+- [ ] Update metafields to include additional points information
+
+### 12. Data Export Functionality (LOWER PRIORITY)
+
+- [ ] Create new route for data exports
+- [ ] Implement date range filtering
+- [ ] Build UI for export configuration
+- [ ] Implement Excel/CSV export generation
+- [ ] Include comprehensive points data in exports
+
+### 13. Annual Reset Mechanism (FUTURE)
+
+- [ ] Design data structure for historical point tracking
+- [ ] Implement scheduled task for annual reset (starting 2026)
+- [ ] Create point transaction records for resets
+- [ ] Build reporting for historical point data
+
+### 14. Testing and Validation
+
+- [ ] Test point calculation accuracy
+- [ ] Validate tier assignment based on points
+- [ ] Test point events functionality
+- [ ] Verify checkout extension functionality
+- [ ] Test customer account extension
+- [ ] Verify data export functionality
+- [ ] Test Shopify profile integration
