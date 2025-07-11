@@ -27,6 +27,7 @@ import {
 } from "../services/customer.server";
 import { adjustCustomerBonusPoints } from "../services/pointTransaction.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
+import { serializeBigInt } from "../utils/serialization";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -192,7 +193,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
 
     return json({
-      customers: mergedCustomers,
+      customers: serializeBigInt(mergedCustomers),
       success: true,
       error: null,
     });

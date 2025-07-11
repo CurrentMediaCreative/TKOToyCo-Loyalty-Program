@@ -32,6 +32,7 @@ import {
 } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
+import { serializeBigInt } from "../utils/serialization";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -333,9 +334,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         spendingGrowth: spendingGrowth.toFixed(1),
       },
       tierCounts,
-      todayCompetitors,
-      monthCompetitors,
-      customers: processedCustomers,
+      todayCompetitors: serializeBigInt(todayCompetitors),
+      monthCompetitors: serializeBigInt(monthCompetitors),
+      customers: serializeBigInt(processedCustomers),
     });
   } catch (error) {
     console.error("Dashboard loader error:", error);
