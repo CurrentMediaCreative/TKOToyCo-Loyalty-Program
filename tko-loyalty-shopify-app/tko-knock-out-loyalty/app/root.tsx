@@ -11,7 +11,10 @@ import { addDocumentResponseHeaders } from "./shopify.server";
 // Create a Document component that includes the DOCTYPE
 function Document({ children }: { children: React.ReactNode }) {
   // Generate a nonce for script security (simple implementation)
-  const nonce = typeof window !== "undefined" ? undefined : Math.random().toString(36).substring(2);
+  const nonce =
+    typeof window !== "undefined"
+      ? undefined
+      : Math.random().toString(36).substring(2);
 
   return (
     <html lang="en">
@@ -27,6 +30,10 @@ function Document({ children }: { children: React.ReactNode }) {
           rel="stylesheet"
           href="https://cdn.shopify.com/static/fonts/inter/v4/styles.css"
         />
+        {/* Shopify App Bridge Script for Web Vitals monitoring */}
+        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+        {/* Web Vitals debug meta tag */}
+        <meta name="shopify-debug" content="web-vitals" />
         <Meta />
         <Links />
       </head>
@@ -35,6 +42,40 @@ function Document({ children }: { children: React.ReactNode }) {
         <ScrollRestoration nonce={nonce} />
         <Scripts nonce={nonce} />
         {process.env.NODE_ENV === "development" && <LiveReload nonce={nonce} />}
+        {/* Web Vitals monitoring script */}
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Web Vitals monitoring implementation
+              if (window.shopify && window.shopify.webVitals) {
+                window.shopify.webVitals.onReport(function(metric) {
+                  // Log Web Vitals data for debugging
+                  console.log('Web Vital:', metric.name, '=', metric.value + 'ms');
+                  
+                  // Send to monitoring endpoint
+                  fetch('/api/web-vitals', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      name: metric.name,
+                      value: metric.value,
+                      rating: metric.rating,
+                      delta: metric.delta,
+                      id: metric.id,
+                      timestamp: Date.now(),
+                      url: window.location.href
+                    })
+                  }).catch(function(error) {
+                    console.warn('Failed to send Web Vitals data:', error);
+                  });
+                });
+              } else {
+                console.warn('Shopify Web Vitals API not available');
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );

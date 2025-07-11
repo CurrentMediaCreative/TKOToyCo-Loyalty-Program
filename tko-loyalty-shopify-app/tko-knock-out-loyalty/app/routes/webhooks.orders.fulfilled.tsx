@@ -14,6 +14,10 @@ import {
   getPendingOrder,
   removePendingOrder,
 } from "../services/pendingOrder.server";
+import {
+  WebhookProcessor,
+  WebhookPerformanceMonitor,
+} from "../services/webhookProcessor.server";
 
 interface OrderLineItem {
   id: string;
@@ -323,36 +327,32 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const { shop, topic, admin, payload } = await authenticate.webhook(request);
-    console.log(`Received ${topic} webhook for ${shop}`);
+
+    // Initialize webhook processor with duplicate prevention and performance monitoring
+    const processor = new WebhookProcessor(request, topic, shop, admin);
 
     // Parse the order data from the webhook payload
     const orderData: ShopifyOrder = payload as ShopifyOrder;
 
-    const customerName = orderData.customer
-      ? `${orderData.customer.first_name || ""} ${orderData.customer.last_name || ""}`.trim() ||
-        "Unknown"
-      : "No customer";
-    const customerEmail = orderData.customer?.email || "No email";
+    // Validate required fields
+    WebhookProcessor.validatePayload(orderData, ["id", "total_price"]);
 
-    console.log(
-      `🚀 Processing fulfilled order ${orderData.name} for customer ${customerName} (${customerEmail})`,
-    );
-
-    // Skip test orders
-    if (orderData.test) {
-      console.log(`Skipping test order ${orderData.id}`);
-      return new Response("Test order skipped", { status: 200 });
+    // Check if order should be skipped
+    const skipCheck = WebhookProcessor.shouldSkipOrder(orderData);
+    if (skipCheck.skip) {
+      console.log(`Skipping order ${orderData.id} - ${skipCheck.reason}`);
+      return new Response(`Order skipped: ${skipCheck.reason}`, {
+        status: 200,
+      });
     }
 
-    // Skip orders without a customer
-    if (!orderData.customer) {
-      console.log(`Skipping order ${orderData.id} - no customer associated`);
-      return new Response("No customer associated", { status: 200 });
-    }
+    // Log order details for debugging
+    WebhookProcessor.logOrderDetails(orderData);
 
-    const orderId = orderData.id.toString();
+    // Process webhook with duplicate prevention and error handling
+    const result = await processor.processWebhook(async (admin) => {
+      const orderId = orderData.id.toString();
 
-    try {
       // Check if this order was in the pending queue
       const pendingOrder = await getPendingOrder(orderId);
 
@@ -365,54 +365,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ) as ShopifyOrder;
 
         // Process the order
-        const result = await processFulfilledOrder(originalOrderData, admin);
+        const processResult = await processFulfilledOrder(
+          originalOrderData,
+          admin,
+        );
 
         // Remove from pending orders
         await removePendingOrder(orderId);
 
-        return new Response(
-          JSON.stringify({
-            success: true,
-            orderId,
-            status: "fulfilled_from_pending",
-            pointsAwarded: result,
-          }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          },
-        );
+        return {
+          ...processResult,
+          status: "fulfilled_from_pending",
+        };
       } else {
         // Order wasn't in pending queue, process directly
         console.log(
           `Order ${orderId} not found in pending queue, processing directly`,
         );
 
-        const result = await processFulfilledOrder(orderData, admin);
+        const processResult = await processFulfilledOrder(orderData, admin);
 
-        return new Response(
-          JSON.stringify({
-            success: true,
-            orderId,
-            status: "fulfilled_direct",
-            pointsAwarded: result,
-          }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          },
-        );
+        return {
+          ...processResult,
+          status: "fulfilled_direct",
+        };
       }
-    } catch (error) {
-      console.error(`Error processing fulfilled order ${orderId}:`, error);
-      return new Response("Error processing fulfilled order", {
-        status: 500,
-      });
-    }
+    }, orderData);
+
+    // Log performance metrics
+    WebhookPerformanceMonitor.logPerformance(
+      topic,
+      result.processingTime || 0,
+      result.success,
+    );
+
+    // Return standardized response
+    return processor.createResponse(result);
   } catch (error) {
     console.error("Error processing order fulfillment webhook:", error);
     return new Response("Webhook processing failed", { status: 500 });
