@@ -165,7 +165,7 @@ export async function getDashboardMetrics(
 }
 
 /**
- * Get customers who made orders today, sorted by total spent
+ * Get customers who made orders today, then sort by total spent
  */
 async function getDailyTopSpenders(
   admin: AdminApiContext,
@@ -174,7 +174,7 @@ async function getDailyTopSpenders(
   const response = await admin.graphql(
     `
     query getDailyTopSpenders($todayQuery: String!) {
-      customers(first: 50, sortKey: TOTAL_SPENT, reverse: true, query: $todayQuery) {
+      customers(first: 100, sortKey: UPDATED_AT, reverse: true, query: $todayQuery) {
         edges {
           node {
             id
@@ -182,6 +182,7 @@ async function getDailyTopSpenders(
             lastName
             amountSpent {
               amount
+              currencyCode
             }
             numberOfOrders
             tags
@@ -214,7 +215,7 @@ async function getDailyTopSpenders(
 }
 
 /**
- * Get customers who made orders this month, sorted by total spent
+ * Get customers who made orders this month, then sort by total spent
  */
 async function getMonthlyTopSpenders(
   admin: AdminApiContext,
@@ -223,7 +224,7 @@ async function getMonthlyTopSpenders(
   const response = await admin.graphql(
     `
     query getMonthlyTopSpenders($monthQuery: String!) {
-      customers(first: 100, sortKey: TOTAL_SPENT, reverse: true, query: $monthQuery) {
+      customers(first: 200, sortKey: UPDATED_AT, reverse: true, query: $monthQuery) {
         edges {
           node {
             id
@@ -231,6 +232,7 @@ async function getMonthlyTopSpenders(
             lastName
             amountSpent {
               amount
+              currencyCode
             }
             numberOfOrders
             tags
@@ -342,17 +344,18 @@ async function getOrdersRevenue(
 }
 
 /**
- * Get all-time revenue from customer total spent
+ * Get all-time revenue from customer total spent using amountSpent field
  */
 async function getAllTimeRevenue(admin: AdminApiContext): Promise<number> {
   const response = await admin.graphql(`
     query getAllTimeRevenue {
-      customers(first: 250, sortKey: TOTAL_SPENT, reverse: true) {
+      customers(first: 250, sortKey: UPDATED_AT, reverse: true) {
         edges {
           node {
             id
             amountSpent {
               amount
+              currencyCode
             }
           }
         }
@@ -373,6 +376,7 @@ async function getAllTimeRevenue(admin: AdminApiContext): Promise<number> {
 
 /**
  * Process daily top spenders with accurate today's spending calculation
+ * Sort by total amountSpent for customers who ordered today
  */
 function processDailyTopSpenders(
   result: any,
@@ -382,48 +386,56 @@ function processDailyTopSpenders(
   const customers = result.data?.customers?.edges || [];
   const today = new Date(todayISO);
 
-  return customers
-    .map((edge: any) => {
-      const customer = edge.node;
-      const orders =
-        customer.orders?.edges?.map((orderEdge: any) => orderEdge.node) || [];
+  return (
+    customers
+      .map((edge: any) => {
+        const customer = edge.node;
+        const orders =
+          customer.orders?.edges?.map((orderEdge: any) => orderEdge.node) || [];
 
-      // Calculate today's spending in EST timezone
-      const todaySpending = orders.reduce((sum: number, order: any) => {
-        const orderDate = new Date(order.createdAt);
-        const orderUtc =
-          orderDate.getTime() + orderDate.getTimezoneOffset() * 60000;
-        const orderEst = new Date(orderUtc + estOffset * 60000);
+        // Calculate today's spending in EST timezone
+        const todaySpending = orders.reduce((sum: number, order: any) => {
+          const orderDate = new Date(order.createdAt);
+          const orderUtc =
+            orderDate.getTime() + orderDate.getTimezoneOffset() * 60000;
+          const orderEst = new Date(orderUtc + estOffset * 60000);
 
-        const orderDateOnly = new Date(
-          orderEst.getFullYear(),
-          orderEst.getMonth(),
-          orderEst.getDate(),
-        );
-
-        if (orderDateOnly.getTime() === today.getTime()) {
-          return (
-            sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
+          const orderDateOnly = new Date(
+            orderEst.getFullYear(),
+            orderEst.getMonth(),
+            orderEst.getDate(),
           );
-        }
-        return sum;
-      }, 0);
 
-      return {
-        ...customer,
-        name:
-          `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
-          "Unknown",
-        tier: calculateCustomerTier(customer),
-        todaySpending,
-      };
-    })
-    .filter((customer: any) => customer.todaySpending > 0)
-    .sort((a: any, b: any) => b.todaySpending - a.todaySpending);
+          if (orderDateOnly.getTime() === today.getTime()) {
+            return (
+              sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
+            );
+          }
+          return sum;
+        }, 0);
+
+        // Use amountSpent from customer object for total spending
+        const totalSpent = parseFloat(customer.amountSpent?.amount || "0");
+
+        return {
+          ...customer,
+          name:
+            `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
+            "Unknown",
+          tier: calculateCustomerTier(customer),
+          todaySpending,
+          totalSpent,
+        };
+      })
+      .filter((customer: any) => customer.todaySpending > 0)
+      // Sort by total amount spent (lifetime) for customers who ordered today
+      .sort((a: any, b: any) => b.totalSpent - a.totalSpent)
+  );
 }
 
 /**
  * Process monthly top spenders with accurate month's spending calculation
+ * Sort by total amountSpent for customers who ordered this month
  */
 function processMonthlyTopSpenders(
   result: any,
@@ -433,34 +445,41 @@ function processMonthlyTopSpenders(
   const customers = result.data?.customers?.edges || [];
   const monthStart = new Date(monthStartISO);
 
-  return customers
-    .map((edge: any) => {
-      const customer = edge.node;
-      const orders =
-        customer.orders?.edges?.map((orderEdge: any) => orderEdge.node) || [];
+  return (
+    customers
+      .map((edge: any) => {
+        const customer = edge.node;
+        const orders =
+          customer.orders?.edges?.map((orderEdge: any) => orderEdge.node) || [];
 
-      // Calculate this month's spending
-      const monthSpending = orders.reduce((sum: number, order: any) => {
-        const orderDate = new Date(order.createdAt);
-        if (orderDate >= monthStart) {
-          return (
-            sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
-          );
-        }
-        return sum;
-      }, 0);
+        // Calculate this month's spending
+        const monthSpending = orders.reduce((sum: number, order: any) => {
+          const orderDate = new Date(order.createdAt);
+          if (orderDate >= monthStart) {
+            return (
+              sum + parseFloat(order.totalPriceSet?.shopMoney?.amount || "0")
+            );
+          }
+          return sum;
+        }, 0);
 
-      return {
-        ...customer,
-        name:
-          `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
-          "Unknown",
-        tier: calculateCustomerTier(customer),
-        monthSpending,
-      };
-    })
-    .filter((customer: any) => customer.monthSpending > 0)
-    .sort((a: any, b: any) => b.monthSpending - a.monthSpending);
+        // Use amountSpent from customer object for total spending
+        const totalSpent = parseFloat(customer.amountSpent?.amount || "0");
+
+        return {
+          ...customer,
+          name:
+            `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
+            "Unknown",
+          tier: calculateCustomerTier(customer),
+          monthSpending,
+          totalSpent,
+        };
+      })
+      .filter((customer: any) => customer.monthSpending > 0)
+      // Sort by total amount spent (lifetime) for customers who ordered this month
+      .sort((a: any, b: any) => b.totalSpent - a.totalSpent)
+  );
 }
 
 /**
