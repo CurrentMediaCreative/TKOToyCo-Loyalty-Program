@@ -173,3 +173,24 @@ model DashboardMetrics {
 
   @@map("DashboardMetrics")
 }
+
+model WebhookEvent {
+  id           String   @id @default(uuid())
+  eventId      String   @unique // X-Shopify-Event-Id header
+  topic        String   // X-Shopify-Topic header
+  shop         String   // X-Shopify-Shop-Domain header
+  status       String   // processing, completed, failed
+  orderId      String?  // Associated order ID if applicable
+  customerId   String?  // Associated customer ID if applicable
+  errorMessage String?  // Error details if failed
+  processedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([topic])
+  @@index([shop])
+  @@index([status])
+  @@index([processedAt])
+  @@map("WebhookEvent")
+}
