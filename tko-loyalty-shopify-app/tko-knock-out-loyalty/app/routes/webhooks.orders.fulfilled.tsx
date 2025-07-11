@@ -162,10 +162,14 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
     );
 
     const customerData = await customerResponse.json();
-    totalSpend = parseFloat(
+    const rawTotalSpend = parseFloat(
       customerData.data?.customer?.amountSpent?.amount || "0",
     );
-    console.log(`💰 Customer total spend: $${totalSpend.toFixed(2)}`);
+    // Round to nearest dollar for points calculation
+    totalSpend = Math.round(rawTotalSpend);
+    console.log(
+      `💰 Customer total spend: $${rawTotalSpend.toFixed(2)} → ${totalSpend} points`,
+    );
   } catch (error) {
     console.error("Error fetching customer data via GraphQL:", error);
     // Fallback to 0 if GraphQL fails

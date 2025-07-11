@@ -263,8 +263,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Get active events for bonus calculation
     const activeEvents = await getActivePointEvents();
 
-    // Calculate cart points
-    const basePoints = Math.floor(cartTotal);
+    // Calculate cart points (rounded to nearest dollar)
+    const basePoints = Math.round(cartTotal);
     const { bonusPoints, appliedEvents } = calculateBonusPoints(
       cartTotal,
       activeEvents,
@@ -345,8 +345,8 @@ export const action = async ({ request }: LoaderFunctionArgs) => {
     // Get active events for bonus calculation
     const activeEvents = await getActivePointEvents();
 
-    // Calculate cart points (enhanced with cart items if available)
-    const basePoints = Math.floor(cartTotal);
+    // Calculate cart points (enhanced with cart items if available, rounded to nearest dollar)
+    const basePoints = Math.round(cartTotal);
     const { bonusPoints, appliedEvents } = calculateBonusPointsWithItems(
       cartTotal,
       cartItems || [],

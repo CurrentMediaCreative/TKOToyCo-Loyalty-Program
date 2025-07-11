@@ -329,9 +329,9 @@ export default function CustomersPage() {
       // Use database data if available, otherwise calculate from Shopify data
       const dbData = customer.dbData;
       const tier = dbData?.tier?.name || getCustomerTier(customer);
-      const totalPoints = dbData?.totalPoints || Math.floor(spentAmount);
+      const totalPoints = dbData?.totalPoints || Math.round(spentAmount);
       const bonusPoints = dbData?.bonusPoints || 0;
-      const spendPoints = dbData?.spendPoints || Math.floor(spentAmount);
+      const spendPoints = dbData?.spendPoints || Math.round(spentAmount);
 
       // Format location
       const address = customer.defaultAddress;

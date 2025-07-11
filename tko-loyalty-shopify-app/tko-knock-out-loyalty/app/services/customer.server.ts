@@ -74,8 +74,8 @@ export async function createOrUpdateCustomer({
   // Generate a unique ID based on the Shopify ID
   const id = `cust_${shopifyId}`;
 
-  // Calculate points from spend (1:1 ratio)
-  const spendPoints = totalSpend !== undefined ? totalSpend : 0;
+  // Calculate points from spend (1:1 ratio, rounded to nearest dollar)
+  const spendPoints = totalSpend !== undefined ? Math.round(totalSpend) : 0;
 
   // Get existing customer to preserve bonus points if not provided
   let existingBonusPoints = 0;
@@ -121,8 +121,8 @@ export async function createOrUpdateCustomer({
       email,
       firstName,
       lastName,
-      totalSpend: totalSpend !== undefined ? totalSpend : undefined,
-      spendPoints: totalSpend !== undefined ? totalSpend : undefined,
+      totalSpend: totalSpend !== undefined ? Math.round(totalSpend) : undefined,
+      spendPoints: spendPoints,
       bonusPoints: updatedBonusPoints,
       totalPoints: calculatedTotalPoints,
       tierId,
@@ -134,8 +134,8 @@ export async function createOrUpdateCustomer({
       email,
       firstName,
       lastName,
-      totalSpend: totalSpend || 0,
-      spendPoints: totalSpend || 0,
+      totalSpend: Math.round(totalSpend || 0),
+      spendPoints: spendPoints,
       bonusPoints: updatedBonusPoints,
       totalPoints: calculatedTotalPoints,
       tierId,
