@@ -14,9 +14,17 @@ database.sqlite
 .env
 .env.*
 
-
-
-
+# Test and debug scripts
+test-*.js
+check-*.js
+analyze-*.js
+diagnose-*.js
+verify-*.js
+fetch-*.js
+bulk-*.js
+inspect-*.js
+investigate-*.js
+find-*.js
 
 /extensions/*/dist
 

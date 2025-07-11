@@ -73,6 +73,7 @@ model Customer {
   tier          Tier?              @relation(fields: [tierId], references: [id])
   transactions  PointTransaction[]
   pendingOrders PendingOrder[]
+  orders        Order[]            // Relationship to orders
 
   @@index([totalPoints])
   @@index([email])
@@ -81,6 +82,52 @@ model Customer {
   @@index([isActive])
   @@index([numberOfOrders])
   @@map("Customer")
+}
+
+model Order {
+  id                String    @id @default(uuid())
+  shopifyId         BigInt    @unique
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id])
+  
+  // Financial data
+  totalAmount       Decimal   @db.Decimal(10, 2)
+  subtotalAmount    Decimal   @db.Decimal(10, 2)
+  taxAmount         Decimal   @db.Decimal(10, 2)
+  shippingAmount    Decimal   @db.Decimal(10, 2)
+  discountAmount    Decimal   @db.Decimal(10, 2)
+  
+  // Status and fulfillment
+  financialStatus   String    // paid, pending, refunded, etc.
+  fulfillmentStatus String?   // fulfilled, partial, unfulfilled
+  
+  // Dates
+  createdAt         DateTime
+  processedAt       DateTime?
+  fulfilledAt       DateTime?
+  
+  // Location and source
+  sourceUrl         String?
+  referringSite     String?
+  landingSite       String?
+  
+  // Order details
+  orderNumber       Int
+  tags              String?
+  note              String?
+  
+  // Tracking
+  lastSyncAt        DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([shopifyId])
+  @@index([customerId])
+  @@index([processedAt])
+  @@index([createdAt])
+  @@index([financialStatus])
+  @@index([fulfillmentStatus])
+  @@index([totalAmount])
+  @@map("Order")
 }
 
 model PointEvent {

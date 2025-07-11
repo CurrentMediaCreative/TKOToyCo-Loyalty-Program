@@ -78,122 +78,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-
-  // Function to fetch all customers using cursor-based pagination
-  async function fetchAllCustomers() {
-    let allCustomers: any[] = [];
-    let hasNextPage = true;
-    let cursor: string | null = null;
-    let pageCount = 0;
-    const MAX_PAGES = 20; // Safety limit to prevent infinite loops
-    const PER_PAGE = 250; // Maximum allowed by Shopify
-
-    try {
-      while (hasNextPage && pageCount < MAX_PAGES) {
-        // Build the query with or without cursor
-        const queryVariables: { first: number; after?: string } = cursor
-          ? { first: PER_PAGE, after: cursor }
-          : { first: PER_PAGE };
-
-        const response: any = await admin.graphql(
-          `#graphql
-            query GetCustomers($first: Int!, $after: String) {
-              customers(first: $first, after: $after) {
-                edges {
-                  node {
-                    id
-                    firstName
-                    lastName
-                    email
-                    phone
-                    numberOfOrders
-                    amountSpent {
-                      amount
-                    }
-                    tags
-                    createdAt
-                    defaultAddress {
-                      city
-                      province
-                      country
-                    }
-                  }
-                  cursor
-                }
-                pageInfo {
-                  hasNextPage
-                  endCursor
-                }
-              }
-            }`,
-          { variables: queryVariables },
-        );
-
-        const responseJson: any = await response.json();
-        const customersData: any = responseJson.data?.customers;
-
-        if (!customersData) {
-          console.error("No customer data returned from API");
-          break;
-        }
-
-        // Extract customers from this page
-        const pageCustomers = customersData.edges.map((edge: any) => edge.node);
-        allCustomers = [...allCustomers, ...pageCustomers];
-
-        // Update pagination info for next iteration
-        hasNextPage = customersData.pageInfo.hasNextPage;
-        cursor = customersData.pageInfo.endCursor;
-        pageCount++;
-
-        console.log(
-          `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
-        );
-      }
-
-      return allCustomers;
-    } catch (error) {
-      console.error("Error fetching customers:", error);
-      throw error;
-    }
-  }
+  await authenticate.admin(request);
 
   try {
-    // Fetch customers from Shopify
-    const shopifyCustomers = await fetchAllCustomers();
-
-    // Fetch customers from our database
+    // Fetch customers from our database only - no more API calls!
     const dbCustomers = await getCustomers();
 
-    // Create a map of database customers by Shopify ID for quick lookup
-    const dbCustomerMap = new Map();
-    dbCustomers.forEach((dbCustomer: any) => {
+    // Transform database customers to match the expected format
+    const customers = dbCustomers.map((dbCustomer: any) => {
+      // Convert database customer to expected format
       const shopifyId = dbCustomer.shopifyId.toString();
-      dbCustomerMap.set(shopifyId, dbCustomer);
-    });
-
-    // Merge Shopify data with database data
-    const mergedCustomers = shopifyCustomers.map((shopifyCustomer: any) => {
-      const shopifyId = shopifyCustomer.id.replace(
-        "gid://shopify/Customer/",
-        "",
-      );
-      const dbCustomer = dbCustomerMap.get(shopifyId);
 
       return {
-        ...shopifyCustomer,
-        // Add database fields if customer exists in our database
-        dbData: dbCustomer || null,
-        bonusPoints: dbCustomer?.bonusPoints || 0,
-        totalPoints: dbCustomer?.totalPoints || 0,
-        spendPoints: dbCustomer?.spendPoints || 0,
-        tier: dbCustomer?.tier || null,
+        // Shopify-like ID format for compatibility
+        id: `gid://shopify/Customer/${shopifyId}`,
+        firstName: dbCustomer.firstName,
+        lastName: dbCustomer.lastName,
+        email: dbCustomer.email,
+        phone: dbCustomer.phone,
+        numberOfOrders: dbCustomer.numberOfOrders,
+        amountSpent: {
+          amount: dbCustomer.totalSpend.toString(),
+        },
+        tags: dbCustomer.tags
+          ? dbCustomer.tags.split(",").map((tag: string) => tag.trim())
+          : [],
+        createdAt: dbCustomer.createdAt,
+        defaultAddress: {
+          city: dbCustomer.city,
+          province: dbCustomer.province,
+          country: dbCustomer.country,
+        },
+        // Database fields
+        dbData: dbCustomer,
+        bonusPoints: dbCustomer.bonusPoints || 0,
+        totalPoints: dbCustomer.totalPoints || 0,
+        spendPoints: dbCustomer.spendPoints || 0,
+        tier: dbCustomer.tier || null,
       };
     });
 
+    console.log(
+      `✅ Loaded ${customers.length} customers from database cache (no API calls)`,
+    );
+
     return json({
-      customers: serializeBigInt(mergedCustomers),
+      customers: serializeBigInt(customers),
       success: true,
       error: null,
     });
@@ -281,24 +211,23 @@ export default function CustomersPage() {
     setSelectedTab(selectedTabIndex);
   };
 
-  // Function to determine customer tier based on total points
-  const getCustomerTier = (customer: any) => {
-    const spent = parseFloat(customer.amountSpent?.amount || "0");
-
+  // Function to determine customer tier based on total points from our database
+  const getCustomerTierFromPoints = (
+    totalPoints: number,
+    tags: string[] = [],
+  ) => {
     // Check if customer has "Reigning Champion" tag (invite-only tier)
-    const hasReigningChampionTag =
-      customer.tags &&
-      customer.tags.some(
-        (tag: string) => tag.toLowerCase() === "reigning champion",
-      );
+    const hasReigningChampionTag = tags.some(
+      (tag: string) => tag.toLowerCase() === "reigning champion",
+    );
 
     if (hasReigningChampionTag) {
-      return "Reigning Champion"; // Manually assigned tier overrides spending tier
-    } else if (spent >= 25000) {
+      return "Reigning Champion"; // Manually assigned tier overrides points tier
+    } else if (totalPoints >= 25000) {
       return "Heavyweight";
-    } else if (spent >= 5000) {
+    } else if (totalPoints >= 5000) {
       return "Welterweight";
-    } else if (spent >= 1500) {
+    } else if (totalPoints >= 1500) {
       return "Lightweight";
     } else {
       return "Featherweight";
@@ -326,12 +255,16 @@ export default function CustomersPage() {
     return customers.map((customer: any) => {
       const spentAmount = parseFloat(customer.amountSpent?.amount || "0");
 
-      // Use database data if available, otherwise calculate from Shopify data
+      // Use database data if available, otherwise calculate from points
       const dbData = customer.dbData;
-      const tier = dbData?.tier?.name || getCustomerTier(customer);
       const totalPoints = dbData?.totalPoints || Math.round(spentAmount);
       const bonusPoints = dbData?.bonusPoints || 0;
       const spendPoints = dbData?.spendPoints || Math.round(spentAmount);
+
+      // Calculate tier using our points-based system
+      const tier =
+        dbData?.tier?.name ||
+        getCustomerTierFromPoints(totalPoints, customer.tags || []);
 
       // Format location
       const address = customer.defaultAddress;

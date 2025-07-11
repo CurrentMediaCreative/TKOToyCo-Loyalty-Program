@@ -94,3 +94,18 @@ export async function deleteTierBenefit(id: string) {
     where: { id },
   });
 }
+
+export async function getCustomerTier(totalPoints: number): Promise<string> {
+  const tiers = await getTiers(); // Already ordered by minPoints asc
+
+  // Start from highest tier and work down
+  for (let i = tiers.length - 1; i >= 0; i--) {
+    const tier = tiers[i];
+    if (totalPoints >= tier.minPoints) {
+      return tier.name;
+    }
+  }
+
+  // If no tier matches, return the lowest tier
+  return tiers[0]?.name || "Featherweight";
+}

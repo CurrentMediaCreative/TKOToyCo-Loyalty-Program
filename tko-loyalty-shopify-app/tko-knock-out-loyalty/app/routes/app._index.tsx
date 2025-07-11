@@ -149,7 +149,7 @@ export default function Index() {
       as="span"
       fontWeight="semibold"
     >
-      ${customer.todaySpending.toFixed(2)}
+      ${customer.periodSpending.toFixed(2)}
     </Text>,
     <Text key={`orders-${customer.id}`} variant="bodyMd" as="span">
       {customer.numberOfOrders || 0}
@@ -185,7 +185,7 @@ export default function Index() {
       as="span"
       fontWeight="semibold"
     >
-      ${customer.monthSpending.toFixed(2)}
+      ${customer.periodSpending.toFixed(2)}
     </Text>,
     <Text key={`orders-${customer.id}`} variant="bodyMd" as="span">
       {customer.numberOfOrders || 0}
