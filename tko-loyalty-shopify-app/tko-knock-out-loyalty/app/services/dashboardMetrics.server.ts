@@ -260,6 +260,7 @@ async function calculateTotalRevenueFromDB(): Promise<number> {
 
 /**
  * Calculate month revenue from database orders
+ * Uses fulfilledAt for proper revenue recognition - revenue is recognized when fulfilled, not when ordered
  */
 async function calculateMonthRevenueFromDB(monthStart: Date): Promise<number> {
   try {
@@ -269,8 +270,9 @@ async function calculateMonthRevenueFromDB(monthStart: Date): Promise<number> {
       },
       where: {
         fulfillmentStatus: "fulfilled",
-        createdAt: {
+        fulfilledAt: {
           gte: monthStart,
+          not: null, // Ensure fulfilledAt is not null
         },
       },
     });
@@ -285,6 +287,7 @@ async function calculateMonthRevenueFromDB(monthStart: Date): Promise<number> {
 
 /**
  * Calculate year revenue from database orders
+ * Uses fulfilledAt for proper revenue recognition - revenue is recognized when fulfilled, not when ordered
  */
 async function calculateYearRevenueFromDB(): Promise<number> {
   try {
@@ -296,8 +299,9 @@ async function calculateYearRevenueFromDB(): Promise<number> {
       },
       where: {
         fulfillmentStatus: "fulfilled",
-        createdAt: {
+        fulfilledAt: {
           gte: yearStart,
+          not: null, // Ensure fulfilledAt is not null
         },
       },
     });
@@ -475,12 +479,17 @@ async function calculateCustomerGrowth(): Promise<number> {
       lastMonthCustomers,
       growth:
         lastMonthCustomers === 0
-          ? 0
+          ? thisMonthCustomers > 0
+            ? 100
+            : 0
           : ((thisMonthCustomers - lastMonthCustomers) / lastMonthCustomers) *
             100,
     });
 
-    if (lastMonthCustomers === 0) return 0;
+    // Improved growth calculation to handle edge cases
+    if (lastMonthCustomers === 0) {
+      return thisMonthCustomers > 0 ? 100 : 0; // 100% growth if we had 0 before and now have some
+    }
     return (
       ((thisMonthCustomers - lastMonthCustomers) / lastMonthCustomers) * 100
     );
@@ -527,19 +536,28 @@ async function calculateSpendingGrowth(): Promise<number> {
     });
 
     // Calculate revenue for each period from fulfilled orders
+    // Using fulfilledAt for proper revenue recognition - revenue is recognized when fulfilled, not when ordered
     const [currentRevenue, lastRevenue] = await Promise.all([
       prisma.order.aggregate({
         _sum: { totalAmount: true },
         where: {
           fulfillmentStatus: "fulfilled",
-          fulfilledAt: { gte: thisMonthStart, lt: thisMonthEnd },
+          fulfilledAt: {
+            gte: thisMonthStart,
+            lt: thisMonthEnd,
+            not: null, // Ensure fulfilledAt is not null
+          },
         },
       }),
       prisma.order.aggregate({
         _sum: { totalAmount: true },
         where: {
           fulfillmentStatus: "fulfilled",
-          fulfilledAt: { gte: lastMonthStart, lt: lastMonthEnd },
+          fulfilledAt: {
+            gte: lastMonthStart,
+            lt: lastMonthEnd,
+            not: null, // Ensure fulfilledAt is not null
+          },
         },
       }),
     ]);
@@ -556,11 +574,16 @@ async function calculateSpendingGrowth(): Promise<number> {
       lastSpending,
       growth:
         lastSpending === 0
-          ? 0
+          ? currentSpending > 0
+            ? 100
+            : 0
           : ((currentSpending - lastSpending) / lastSpending) * 100,
     });
 
-    if (lastSpending === 0) return 0;
+    // Improved growth calculation to handle edge cases
+    if (lastSpending === 0) {
+      return currentSpending > 0 ? 100 : 0; // 100% growth if we had 0 before and now have some
+    }
     return ((currentSpending - lastSpending) / lastSpending) * 100;
   } catch (error) {
     console.error("❌ Error calculating spending growth:", error);

@@ -203,17 +203,26 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
   // Note: Base/spend points are handled by the existing loyalty system
   // This webhook only handles bonus points from events
 
-  // Extract product IDs and fetch their collections
+  // Extract product IDs and fetch their collections with enhanced error handling
   const productIds = orderData.line_items.map((item) =>
     item.product_id.toString(),
   );
   let productCollections: Record<string, string[]> = {};
+  let collectionFetchSuccess = false;
+
+  console.log(`🔍 Fetching collections for ${productIds.length} products...`);
 
   try {
     productCollections = await fetchProductCollections(admin, productIds);
+    collectionFetchSuccess = true;
+    console.log(
+      `✅ Successfully fetched collections for ${Object.keys(productCollections).length} products`,
+    );
   } catch (error) {
-    console.error("Error fetching product collections:", error);
-    // Continue without collection data - bonus points will be skipped
+    console.error("❌ Error fetching product collections:", error);
+    console.log(
+      "⚠️ Continuing without collection data - collection-based events will be skipped",
+    );
   }
 
   // Prepare line items for bonus calculation (include ALL products)
@@ -227,31 +236,99 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
   // Check if this is an in-store order (BinderPOS)
   const isInstoreOrder = isBinderPOSOrder(orderData.note || null);
 
-  // Log product details
+  // Enhanced product logging with collection identification issues
   console.log(`🛍️ Products in order (${orderLineItems.length} items):`);
+  let productsWithoutCollections = 0;
+
   orderData.line_items.forEach((item, index) => {
     const collections = productCollections[item.product_id.toString()] || [];
     console.log(
-      `  ${index + 1}. ${item.title} - $${parseFloat(item.price).toFixed(2)} x${item.quantity}`,
+      `  ${index + 1}. ${item.title} (ID: ${item.product_id}) - $${parseFloat(item.price).toFixed(2)} x${item.quantity}`,
     );
+
     if (collections.length > 0) {
-      console.log(`     Collections: [${collections.join(", ")}]`);
+      console.log(`     ✅ Collections: [${collections.join(", ")}]`);
+    } else {
+      console.log(`     ⚠️ No collections found`);
+      productsWithoutCollections++;
     }
   });
 
-  // Calculate bonus points
+  if (productsWithoutCollections > 0) {
+    console.log(
+      `⚠️ ${productsWithoutCollections} products have no collection data - may affect collection-based events`,
+    );
+  }
+
+  // Check for existing bonus point transactions to prevent duplicates
+  console.log(
+    `🔍 Checking for existing bonus point transactions for order ${orderId}...`,
+  );
+  let existingBonusTransactions: any[] = [];
+
+  try {
+    const { PrismaClient } = await import("@prisma/client");
+    const prisma = new PrismaClient();
+
+    existingBonusTransactions = await prisma.pointTransaction.findMany({
+      where: {
+        customerId: loyaltyCustomer.id,
+        orderId: orderId,
+        type: "bonus",
+      },
+      include: {
+        event: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    await prisma.$disconnect();
+
+    if (existingBonusTransactions.length > 0) {
+      console.log(
+        `⚠️ Found ${existingBonusTransactions.length} existing bonus transactions for this order:`,
+      );
+      existingBonusTransactions.forEach((transaction, index) => {
+        const eventName = transaction.event?.name || "Unknown Event";
+        console.log(
+          `  ${index + 1}. ${eventName}: ${transaction.amount} points`,
+        );
+      });
+    } else {
+      console.log(
+        `✅ No existing bonus transactions found - proceeding with calculation`,
+      );
+    }
+  } catch (error) {
+    console.error("❌ Error checking existing transactions:", error);
+    console.log(
+      "⚠️ Continuing with bonus calculation (duplicate check failed)",
+    );
+  }
+
+  // Calculate bonus points with enhanced error handling
   let bonusPoints = 0;
   let appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
   let eventNames: string[] = [];
 
   if (orderLineItems.length > 0) {
     try {
+      console.log(
+        `🧮 Calculating bonus points for ${isInstoreOrder ? "in-store" : "online"} order...`,
+      );
+
       const bonusResult = await calculateBonusPoints({
         orderLineItems,
         isInstoreOrder,
       });
+
       bonusPoints = bonusResult.totalBonusPoints;
       appliedEvents = bonusResult.appliedEvents;
+
+      console.log(
+        `✅ Bonus calculation completed: ${bonusPoints} total bonus points from ${appliedEvents.length} events`,
+      );
 
       // Get event names for logging
       if (appliedEvents.length > 0) {
@@ -264,18 +341,18 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
           });
           eventNames = events.map((e) => e.name);
         } catch (error) {
-          console.error("Error fetching event names:", error);
+          console.error("❌ Error fetching event names:", error);
         } finally {
           await prisma.$disconnect();
         }
       }
     } catch (error) {
-      console.error("Error calculating bonus points:", error);
-      // Continue without bonus points
+      console.error("❌ Error calculating bonus points:", error);
+      console.log("⚠️ Continuing without bonus points");
     }
   }
 
-  // Log applied events
+  // Enhanced event logging
   if (appliedEvents.length > 0) {
     console.log(`🎯 Applied point events:`);
     appliedEvents.forEach((event, index) => {
@@ -284,18 +361,71 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
     });
   } else {
     console.log(`🎯 No point events qualified for this order`);
+    if (!collectionFetchSuccess) {
+      console.log(
+        `   ℹ️ Collection data unavailable - collection-based events were skipped`,
+      );
+    }
   }
 
-  // Create bonus point transactions
+  // Create bonus point transactions with enhanced error handling and duplicate prevention
+  let transactionErrors = 0;
+  let transactionsCreated = 0;
+
   for (const appliedEvent of appliedEvents) {
-    await createBonusPointsTransaction({
-      customerId: loyaltyCustomer.id,
-      amount: appliedEvent.pointsAwarded,
-      orderId,
-      eventId: appliedEvent.eventId,
-      description: `Bonus points from event for order #${orderData.order_number}`,
-      admin,
-    });
+    try {
+      // Double-check for existing transaction for this specific event
+      const { PrismaClient } = await import("@prisma/client");
+      const prisma = new PrismaClient();
+
+      const existingTransaction = await prisma.pointTransaction.findFirst({
+        where: {
+          customerId: loyaltyCustomer.id,
+          orderId: orderId,
+          eventId: appliedEvent.eventId,
+          type: "bonus",
+        },
+      });
+
+      await prisma.$disconnect();
+
+      if (existingTransaction) {
+        console.log(
+          `⚠️ Skipping duplicate bonus transaction for event ${appliedEvent.eventId} (${appliedEvent.pointsAwarded} points)`,
+        );
+        continue;
+      }
+
+      await createBonusPointsTransaction({
+        customerId: loyaltyCustomer.id,
+        amount: appliedEvent.pointsAwarded,
+        orderId,
+        eventId: appliedEvent.eventId,
+        description: `Bonus points from event for order #${orderData.order_number}`,
+        admin,
+      });
+
+      transactionsCreated++;
+      console.log(
+        `✅ Created bonus transaction: ${appliedEvent.pointsAwarded} points`,
+      );
+    } catch (error) {
+      console.error(
+        `❌ Error creating bonus transaction for event ${appliedEvent.eventId}:`,
+        error,
+      );
+      transactionErrors++;
+    }
+  }
+
+  if (transactionErrors > 0) {
+    console.log(`⚠️ ${transactionErrors} bonus transactions failed to create`);
+  }
+
+  if (transactionsCreated > 0) {
+    console.log(
+      `✅ Successfully created ${transactionsCreated} bonus point transactions`,
+    );
   }
 
   // Enhanced final logging

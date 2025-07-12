@@ -71,7 +71,7 @@ export async function updateCustomerTierMetafields(
     // Determine tier level based on tier name
     const tierLevel = getTierLevel(tier.name);
 
-    // Create metafields using the Shopify Admin API
+    // Create metafields using the Shopify Admin API with enhanced error handling
     const response = await admin.graphql(
       `#graphql
       mutation UpdateCustomerMetafields($metafields: [MetafieldsSetInput!]!) {
@@ -146,9 +146,49 @@ export async function updateCustomerTierMetafields(
     );
 
     const responseJson = await response.json();
+
+    // Check for authentication errors specifically
+    if (response.status === 401) {
+      console.warn(
+        `⚠️ Authentication failed for metafield update (customer ${shopifyCustomerId}) - this is expected in webhook context`,
+      );
+      return { success: false, error: "authentication_failed", skipped: true };
+    }
+
+    // Check for GraphQL errors
+    if (responseJson.errors) {
+      console.error(`GraphQL errors in metafield update:`, responseJson.errors);
+      throw new Error(
+        `GraphQL errors: ${responseJson.errors.map((e: any) => e.message).join(", ")}`,
+      );
+    }
+
+    // Check for user errors in the mutation response
+    if (responseJson.data?.metafieldsSet?.userErrors?.length > 0) {
+      const userErrors = responseJson.data.metafieldsSet.userErrors;
+      console.error(`User errors in metafield update:`, userErrors);
+      throw new Error(
+        `User errors: ${userErrors.map((e: any) => e.message).join(", ")}`,
+      );
+    }
+
     return responseJson;
   } catch (error) {
-    console.error("Error updating customer tier metafields:", error);
+    // Enhanced error logging with context
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `Error updating customer tier metafields for customer ${shopifyCustomerId}:`,
+      errorMessage,
+    );
+
+    // Check if this is an authentication error (common in webhook context)
+    if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
+      console.warn(
+        `⚠️ Authentication error during metafield update - this may be expected in webhook context`,
+      );
+      return { success: false, error: "authentication_failed", skipped: true };
+    }
+
     throw error;
   }
 }
@@ -246,7 +286,9 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
       const dbTiers = await getTiers();
 
       // Sort tiers by minPoints in ascending order
-      const sortedTiers = [...dbTiers].sort((a, b) => a.minPoints - b.minPoints);
+      const sortedTiers = [...dbTiers].sort(
+        (a, b) => a.minPoints - b.minPoints,
+      );
 
       // Find the appropriate tier based on the customer's spend
       let matchedTier = sortedTiers[0]; // Default to the lowest tier

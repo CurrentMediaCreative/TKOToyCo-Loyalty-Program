@@ -188,67 +188,182 @@ export async function calculateBonusPoints({
   }>;
   isInstoreOrder?: boolean;
 }) {
+  console.log(
+    `🎯 Starting bonus points calculation for ${orderLineItems.length} line items`,
+  );
+  console.log(`📍 Order type: ${isInstoreOrder ? "in-store" : "online"}`);
+
   let totalBonusPoints = 0;
   const activeEvents = await getActivePointEvents();
   const appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
 
+  console.log(`🎪 Found ${activeEvents.length} active point events`);
+
+  if (activeEvents.length === 0) {
+    console.log(`ℹ️ No active events found - no bonus points will be awarded`);
+    return {
+      totalBonusPoints: 0,
+      appliedEvents: [],
+    };
+  }
+
   for (const event of activeEvents) {
+    console.log(`\n🎪 Evaluating event: "${event.name}" (${event.eventType})`);
+    console.log(`   📅 Active: ${event.startDate} to ${event.endDate}`);
+    console.log(
+      `   📺 Channel: ${event.channel} | Bonus: ${event.bonusPercentage}%`,
+    );
+
     // Check if event applies to this order channel
     if (
       (event.channel === "online" && isInstoreOrder) ||
       (event.channel === "instore" && !isInstoreOrder)
     ) {
-      continue; // Skip this event
+      console.log(
+        `   ⏭️ Skipping - channel mismatch (event: ${event.channel}, order: ${isInstoreOrder ? "instore" : "online"})`,
+      );
+      continue;
     }
 
     let eventBonusPoints = 0;
+    let qualifyingItems = 0;
+    let qualifyingAmount = 0;
 
     // For store-wide events, apply to all products
     if (event.eventType === "store-wide") {
+      console.log(
+        `   🌍 Store-wide event - applying to all ${orderLineItems.length} items`,
+      );
+
       for (const lineItem of orderLineItems) {
         const lineItemTotal = lineItem.price * lineItem.quantity;
-        eventBonusPoints += (lineItemTotal * event.bonusPercentage) / 100;
+        const itemBonus = (lineItemTotal * event.bonusPercentage) / 100;
+        eventBonusPoints += itemBonus;
+        qualifyingItems++;
+        qualifyingAmount += lineItemTotal;
+
+        console.log(
+          `     ✅ Product ${lineItem.productId}: $${lineItemTotal.toFixed(2)} → +${itemBonus.toFixed(2)} bonus`,
+        );
       }
     }
 
     // For collection-based events, check if products are in the collections
     if (event.eventType === "collections" && event.collections) {
-      const eventCollections = JSON.parse(event.collections) as string[];
+      let eventCollections: string[] = [];
+
+      try {
+        eventCollections = JSON.parse(event.collections) as string[];
+        console.log(
+          `   📂 Collection-based event targeting collections: [${eventCollections.join(", ")}]`,
+        );
+      } catch (error) {
+        console.error(`   ❌ Error parsing event collections:`, error);
+        console.log(`   ⏭️ Skipping event due to collection parsing error`);
+        continue;
+      }
 
       for (const lineItem of orderLineItems) {
-        // Check if this product is in any of the event collections
-        const isInEventCollection = lineItem.collections.some((collectionId) =>
-          eventCollections.includes(collectionId),
+        console.log(`     🔍 Checking product ${lineItem.productId}:`);
+        console.log(
+          `       Product collections: [${lineItem.collections.join(", ") || "none"}]`,
         );
 
-        if (isInEventCollection) {
+        // Check if this product is in any of the event collections
+        const matchingCollections = lineItem.collections.filter(
+          (collectionId) => eventCollections.includes(collectionId),
+        );
+
+        if (matchingCollections.length > 0) {
           const lineItemTotal = lineItem.price * lineItem.quantity;
-          eventBonusPoints += (lineItemTotal * event.bonusPercentage) / 100;
+          const itemBonus = (lineItemTotal * event.bonusPercentage) / 100;
+          eventBonusPoints += itemBonus;
+          qualifyingItems++;
+          qualifyingAmount += lineItemTotal;
+
+          console.log(
+            `       ✅ MATCH! Collections: [${matchingCollections.join(", ")}]`,
+          );
+          console.log(
+            `       💰 $${lineItemTotal.toFixed(2)} → +${itemBonus.toFixed(2)} bonus`,
+          );
+        } else {
+          console.log(`       ❌ No matching collections`);
         }
       }
     }
 
     // For product-specific events, check if any products match
     if (event.eventType === "product-specific" && event.productIds) {
-      const eventProductIds = JSON.parse(event.productIds) as string[];
+      let eventProductIds: string[] = [];
+
+      try {
+        eventProductIds = JSON.parse(event.productIds) as string[];
+        console.log(
+          `   🎯 Product-specific event targeting products: [${eventProductIds.join(", ")}]`,
+        );
+      } catch (error) {
+        console.error(`   ❌ Error parsing event product IDs:`, error);
+        console.log(`   ⏭️ Skipping event due to product ID parsing error`);
+        continue;
+      }
 
       for (const lineItem of orderLineItems) {
+        console.log(`     🔍 Checking product ${lineItem.productId}`);
+
         if (eventProductIds.includes(lineItem.productId)) {
           const lineItemTotal = lineItem.price * lineItem.quantity;
-          eventBonusPoints += (lineItemTotal * event.bonusPercentage) / 100;
+          const itemBonus = (lineItemTotal * event.bonusPercentage) / 100;
+          eventBonusPoints += itemBonus;
+          qualifyingItems++;
+          qualifyingAmount += lineItemTotal;
+
+          console.log(`       ✅ MATCH! Product in event list`);
+          console.log(
+            `       💰 $${lineItemTotal.toFixed(2)} → +${itemBonus.toFixed(2)} bonus`,
+          );
+        } else {
+          console.log(`       ❌ Product not in event list`);
         }
       }
     }
 
+    // Log event results
     if (eventBonusPoints > 0) {
       // Round up bonus points as per user requirement
       const roundedPoints = Math.ceil(eventBonusPoints);
       totalBonusPoints += roundedPoints;
       appliedEvents.push({ eventId: event.id, pointsAwarded: roundedPoints });
 
+      console.log(
+        `   🎉 Event qualified! ${qualifyingItems} items, $${qualifyingAmount.toFixed(2)} total`,
+      );
+      console.log(
+        `   🏆 Raw bonus: ${eventBonusPoints.toFixed(2)} → Rounded: ${roundedPoints} points`,
+      );
+
       // Update event statistics
-      await updatePointEventStats(event.id, roundedPoints);
+      try {
+        await updatePointEventStats(event.id, roundedPoints);
+        console.log(`   📊 Event statistics updated`);
+      } catch (error) {
+        console.error(`   ❌ Error updating event statistics:`, error);
+      }
+    } else {
+      console.log(`   ❌ Event did not qualify - no matching items found`);
     }
+  }
+
+  console.log(`\n🏁 Bonus calculation complete:`);
+  console.log(`   🎁 Total bonus points: ${totalBonusPoints}`);
+  console.log(`   🎪 Events applied: ${appliedEvents.length}`);
+
+  if (appliedEvents.length > 0) {
+    appliedEvents.forEach((event, index) => {
+      console.log(
+        `     ${index + 1}. Event ${event.eventId}: ${event.pointsAwarded} points`,
+      );
+    });
   }
 
   return {
