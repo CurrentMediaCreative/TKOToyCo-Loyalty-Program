@@ -126,7 +126,7 @@ export async function getDashboardMetrics(
 
     // Calculate real growth metrics from database
     const customerGrowth = await calculateCustomerGrowth();
-    const spendingGrowth = await calculateSpendingGrowth(monthSpending);
+    const spendingGrowth = await calculateSpendingGrowth();
 
     const endTime = Date.now();
     console.log(
@@ -417,19 +417,46 @@ async function calculateTopSpendersFromDB(
 
 /**
  * Calculate real customer growth from database
+ * Compares current month (1st to current day) vs previous month (1st to same day)
  */
 async function calculateCustomerGrowth(): Promise<number> {
   try {
     const now = new Date();
+    const currentDay = now.getDate();
+
+    // Current month: 1st to current day
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(thisMonthStart.getTime() - 1);
+    const thisMonthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      currentDay + 1,
+    );
+
+    // Previous month: 1st to same day (or last day if current day doesn't exist)
+    const prevMonth = now.getMonth() - 1;
+    const prevYear = prevMonth < 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const adjustedPrevMonth = prevMonth < 0 ? 11 : prevMonth;
+
+    const lastMonthStart = new Date(prevYear, adjustedPrevMonth, 1);
+    const daysInPrevMonth = new Date(
+      prevYear,
+      adjustedPrevMonth + 1,
+      0,
+    ).getDate();
+    const compareDay = Math.min(currentDay, daysInPrevMonth);
+    const lastMonthEnd = new Date(prevYear, adjustedPrevMonth, compareDay + 1);
+
+    console.log(`📊 Customer Growth Comparison:`, {
+      currentPeriod: `${thisMonthStart.toISOString().split("T")[0]} to ${new Date(thisMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
+      previousPeriod: `${lastMonthStart.toISOString().split("T")[0]} to ${new Date(lastMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
+    });
 
     const [thisMonthCustomers, lastMonthCustomers] = await Promise.all([
       prisma.customer.count({
         where: {
           createdAt: {
             gte: thisMonthStart,
+            lt: thisMonthEnd,
           },
         },
       }),
@@ -437,11 +464,21 @@ async function calculateCustomerGrowth(): Promise<number> {
         where: {
           createdAt: {
             gte: lastMonthStart,
-            lte: lastMonthEnd,
+            lt: lastMonthEnd,
           },
         },
       }),
     ]);
+
+    console.log(`📊 Customer Growth Results:`, {
+      thisMonthCustomers,
+      lastMonthCustomers,
+      growth:
+        lastMonthCustomers === 0
+          ? 0
+          : ((thisMonthCustomers - lastMonthCustomers) / lastMonthCustomers) *
+            100,
+    });
 
     if (lastMonthCustomers === 0) return 0;
     return (
@@ -455,36 +492,76 @@ async function calculateCustomerGrowth(): Promise<number> {
 
 /**
  * Calculate real spending growth from database
+ * Compares current month (1st to current day) vs previous month (1st to same day)
  */
-async function calculateSpendingGrowth(
-  currentMonthSpending: number,
-): Promise<number> {
+async function calculateSpendingGrowth(): Promise<number> {
   try {
     const now = new Date();
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const currentDay = now.getDate();
 
-    const result = await prisma.order.aggregate({
-      _sum: {
-        totalAmount: true,
-      },
-      where: {
-        fulfillmentStatus: "fulfilled",
-        createdAt: {
-          gte: lastMonthStart,
-          lte: lastMonthEnd,
-        },
-      },
+    // Current month: 1st to current day
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisMonthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      currentDay + 1,
+    );
+
+    // Previous month: 1st to same day (or last day if current day doesn't exist)
+    const prevMonth = now.getMonth() - 1;
+    const prevYear = prevMonth < 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const adjustedPrevMonth = prevMonth < 0 ? 11 : prevMonth;
+
+    const lastMonthStart = new Date(prevYear, adjustedPrevMonth, 1);
+    const daysInPrevMonth = new Date(
+      prevYear,
+      adjustedPrevMonth + 1,
+      0,
+    ).getDate();
+    const compareDay = Math.min(currentDay, daysInPrevMonth);
+    const lastMonthEnd = new Date(prevYear, adjustedPrevMonth, compareDay + 1);
+
+    console.log(`📊 Spending Growth Comparison:`, {
+      currentPeriod: `${thisMonthStart.toISOString().split("T")[0]} to ${new Date(thisMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
+      previousPeriod: `${lastMonthStart.toISOString().split("T")[0]} to ${new Date(lastMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
     });
 
-    const lastMonthSpending = result._sum.totalAmount
-      ? parseFloat(result._sum.totalAmount.toString())
-      : 0;
+    // Calculate revenue for each period from fulfilled orders
+    const [currentRevenue, lastRevenue] = await Promise.all([
+      prisma.order.aggregate({
+        _sum: { totalAmount: true },
+        where: {
+          fulfillmentStatus: "fulfilled",
+          fulfilledAt: { gte: thisMonthStart, lt: thisMonthEnd },
+        },
+      }),
+      prisma.order.aggregate({
+        _sum: { totalAmount: true },
+        where: {
+          fulfillmentStatus: "fulfilled",
+          fulfilledAt: { gte: lastMonthStart, lt: lastMonthEnd },
+        },
+      }),
+    ]);
 
-    if (lastMonthSpending === 0) return 0;
-    return (
-      ((currentMonthSpending - lastMonthSpending) / lastMonthSpending) * 100
+    const currentSpending = parseFloat(
+      currentRevenue._sum.totalAmount?.toString() || "0",
     );
+    const lastSpending = parseFloat(
+      lastRevenue._sum.totalAmount?.toString() || "0",
+    );
+
+    console.log(`📊 Spending Growth Results:`, {
+      currentSpending,
+      lastSpending,
+      growth:
+        lastSpending === 0
+          ? 0
+          : ((currentSpending - lastSpending) / lastSpending) * 100,
+    });
+
+    if (lastSpending === 0) return 0;
+    return ((currentSpending - lastSpending) / lastSpending) * 100;
   } catch (error) {
     console.error("❌ Error calculating spending growth:", error);
     return 0;

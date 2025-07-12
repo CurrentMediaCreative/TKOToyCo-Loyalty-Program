@@ -151,35 +151,13 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
     `👤 Customer: ${customerName} (${customerEmail}) - ID: ${customer.id}`,
   );
 
-  // Fetch reliable customer data using GraphQL API (same pattern as dashboard)
-  let totalSpend = 0;
-  try {
-    const customerResponse = await admin.graphql(
-      `#graphql
-        query getCustomer($id: ID!) {
-          customer(id: $id) {
-            amountSpent {
-              amount
-            }
-          }
-        }`,
-      { variables: { id: customer.admin_graphql_api_id } },
-    );
-
-    const customerData = await customerResponse.json();
-    const rawTotalSpend = parseFloat(
-      customerData.data?.customer?.amountSpent?.amount || "0",
-    );
-    // Round to nearest dollar for points calculation
-    totalSpend = Math.round(rawTotalSpend);
-    console.log(
-      `💰 Customer total spend: $${rawTotalSpend.toFixed(2)} → ${totalSpend} points`,
-    );
-  } catch (error) {
-    console.error("Error fetching customer data via GraphQL:", error);
-    // Fallback to 0 if GraphQL fails
-    totalSpend = 0;
-  }
+  // Use customer total spend from webhook payload (no API call needed)
+  const rawTotalSpend = parseFloat(customer.total_spent || "0");
+  // Round to nearest dollar for points calculation
+  const totalSpend = Math.round(rawTotalSpend);
+  console.log(
+    `💰 Customer total spend: $${rawTotalSpend.toFixed(2)} → ${totalSpend} points`,
+  );
 
   // Create or update customer in our database
   let loyaltyCustomer;
@@ -194,7 +172,7 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
         lastName: customer.last_name,
         totalSpend: totalSpend,
         lastOrderDate: new Date(orderData.created_at),
-        admin,
+        admin, // Keep admin for metafield updates with improved error handling
       });
     } else {
       loyaltyCustomer = await createOrUpdateCustomer({
@@ -204,7 +182,7 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
         lastName: customer.last_name,
         totalSpend: totalSpend,
         lastOrderDate: new Date(orderData.created_at),
-        admin,
+        admin, // Keep admin for metafield updates with improved error handling
       });
     }
   } catch (error) {

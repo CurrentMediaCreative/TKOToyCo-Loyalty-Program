@@ -155,36 +155,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
 
       if (!loyaltyCustomer) {
-        // Fetch reliable customer data using GraphQL API for pending orders too
-        let totalSpend = 0;
-        try {
-          const customerResponse = await admin.graphql(
-            `#graphql
-              query getCustomer($id: ID!) {
-                customer(id: $id) {
-                  amountSpent {
-                    amount
-                  }
-                }
-              }`,
-            { variables: { id: orderData.customer!.admin_graphql_api_id } },
-          );
-
-          const customerData = await customerResponse.json();
-          totalSpend = parseFloat(
-            customerData.data?.customer?.amountSpent?.amount || "0",
-          );
-          console.log(
-            `Fetched reliable customer total spend for pending order: ${totalSpend}`,
-          );
-        } catch (error) {
-          console.error(
-            "Error fetching customer data via GraphQL for pending order:",
-            error,
-          );
-          // Fallback to 0 if GraphQL fails
-          totalSpend = 0;
-        }
+        // Use customer total spend from webhook payload (no API call needed)
+        const totalSpend = Math.round(
+          parseFloat(orderData.customer!.total_spent || "0"),
+        );
+        console.log(
+          `Using customer total spend from webhook payload: ${totalSpend}`,
+        );
 
         loyaltyCustomer = await createOrUpdateCustomer({
           shopifyId: orderData.customer!.id,
