@@ -22,156 +22,69 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getPointEvents } from "../services/pointEvent.server";
+import prisma from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  await authenticate.admin(request);
 
   try {
+    console.log(
+      "🚀 Loading reports data from DATABASE CACHE (NO API CALLS)...",
+    );
+    const startTime = Date.now();
+
     // Fetch events from database for the event-based report
     const events = await getPointEvents();
 
-    // Fetch customers from Shopify API instead of empty database
-    async function fetchAllCustomers() {
-      let allCustomers: any[] = [];
-      let hasNextPage = true;
-      let cursor: string | null = null;
-      let pageCount = 0;
-      const MAX_PAGES = 20; // Safety limit
-      const PER_PAGE = 250; // Maximum allowed by Shopify
-
-      try {
-        while (hasNextPage && pageCount < MAX_PAGES) {
-          const queryVariables: {
-            first: number;
-            after?: string;
-            sortKey: string;
-            reverse: boolean;
-          } = cursor
-            ? {
-                first: PER_PAGE,
-                after: cursor,
-                sortKey: "UPDATED_AT",
-                reverse: true,
-              }
-            : { first: PER_PAGE, sortKey: "UPDATED_AT", reverse: true };
-
-          const response: any = await admin.graphql(
-            `#graphql
-              query GetCustomers($first: Int!, $after: String, $sortKey: CustomerSortKeys!, $reverse: Boolean!) {
-                customers(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
-                  edges {
-                    node {
-                      id
-                      firstName
-                      lastName
-                      email
-                      amountSpent {
-                        amount
-                      }
-                      numberOfOrders
-                      tags
-                      createdAt
-                      lastOrder {
-                        createdAt
-                      }
-                      orders(first: 50, sortKey: CREATED_AT, reverse: true) {
-                        edges {
-                          node {
-                            id
-                            createdAt
-                            totalPriceSet {
-                              shopMoney {
-                                amount
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                    cursor
-                  }
-                  pageInfo {
-                    hasNextPage
-                    endCursor
-                  }
-                }
-              }`,
-            { variables: queryVariables },
-          );
-
-          const responseJson: any = await response.json();
-          const customersData: any = responseJson.data?.customers;
-
-          if (!customersData) {
-            console.error("No customer data returned from API");
-            break;
-          }
-
-          const pageCustomers = customersData.edges.map(
-            (edge: any) => edge.node,
-          );
-          allCustomers = [...allCustomers, ...pageCustomers];
-
-          hasNextPage = customersData.pageInfo.hasNextPage;
-          cursor = customersData.pageInfo.endCursor;
-          pageCount++;
-        }
-
-        return allCustomers;
-      } catch (error) {
-        console.error("Error fetching customers:", error);
-        throw error;
-      }
-    }
-
-    const shopifyCustomers = await fetchAllCustomers();
-
-    // Transform Shopify customers to include tier information and points calculation
-    const customers = shopifyCustomers.map((customer: any) => {
-      const spent = parseFloat(customer.amountSpent?.amount || "0");
-
-      // Calculate tier based on spending (same logic as dashboard)
-      let tier = "Featherweight";
-      const hasReigningChampionTag =
-        customer.tags &&
-        customer.tags.some(
-          (tag: string) => tag.toLowerCase() === "reigning champion",
-        );
-
-      if (hasReigningChampionTag) {
-        tier = "Reigning Champion";
-      } else if (spent >= 30000) {
-        tier = "Heavyweight";
-      } else if (spent >= 5000) {
-        tier = "Welterweight";
-      } else if (spent >= 1500) {
-        tier = "Lightweight";
-      }
-
-      // Calculate points based on spending (1 point per dollar spent)
-      const spendPoints = Math.floor(spent);
-
-      // For now, set bonus points to 0 since we'd need to query the database
-      // In a full implementation, we'd fetch bonus points from the database
-      const bonusPoints = 0;
-      const totalPoints = spendPoints + bonusPoints;
-
-      return {
-        id: customer.id,
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        email: customer.email,
-        amountSpent: spent,
-        numberOfOrders: customer.numberOfOrders,
-        tier,
-        spendPoints,
-        bonusPoints,
-        totalPoints,
-        createdAt: customer.createdAt,
-        lastOrder: customer.lastOrder,
-        orders: customer.orders?.edges?.map((edge: any) => edge.node) || [],
-      };
+    // Fetch customers from DATABASE CACHE - NO API CALLS!
+    const dbCustomers = await prisma.customer.findMany({
+      select: {
+        id: true,
+        shopifyId: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        totalSpend: true,
+        totalPoints: true,
+        spendPoints: true,
+        bonusPoints: true,
+        numberOfOrders: true,
+        createdAt: true,
+        lastOrderDate: true,
+        tags: true,
+        tier: {
+          select: { name: true },
+        },
+      },
     });
+
+    console.log(
+      `📊 Loaded ${dbCustomers.length} customers from database cache`,
+    );
+
+    // Transform database customers to match expected format
+    const customers = dbCustomers.map((customer: any) => ({
+      id: `gid://shopify/Customer/${customer.shopifyId}`,
+      firstName: customer.firstName || "",
+      lastName: customer.lastName || "",
+      email: customer.email || "",
+      amountSpent: parseFloat(customer.totalSpend?.toString() || "0"),
+      numberOfOrders: customer.numberOfOrders || 0,
+      tier: customer.tier?.name || "Featherweight",
+      spendPoints: customer.spendPoints || 0,
+      bonusPoints: customer.bonusPoints || 0,
+      totalPoints: customer.totalPoints || 0,
+      createdAt: customer.createdAt?.toISOString(),
+      lastOrder: customer.lastOrderDate
+        ? { createdAt: customer.lastOrderDate.toISOString() }
+        : null,
+      orders: [], // Orders not needed for reports summary
+    }));
+
+    const endTime = Date.now();
+    console.log(
+      `✅ Reports data loaded in ${endTime - startTime}ms (DATABASE CACHE ONLY!)`,
+    );
 
     // Create tier definitions for tier distribution analysis
     const tiers = [
