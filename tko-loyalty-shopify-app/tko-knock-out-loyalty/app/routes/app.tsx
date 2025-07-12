@@ -1,5 +1,5 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
+import { Outlet, useLoaderData, useRouteError } from "@remix-run/react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
@@ -21,13 +21,13 @@ export default function App() {
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       <NavMenu>
-        <Link to="/app" rel="home">
+        <a href="/app" rel="home">
           Home
-        </Link>
-        <Link to="/app/customers">Customers</Link>
-        <Link to="/app/tiers">Tiers</Link>
-        <Link to="/app/events">Point Events</Link>
-        <Link to="/app/reports">Reports</Link>
+        </a>
+        <a href="/app/customers">Customers</a>
+        <a href="/app/tiers">Tiers</a>
+        <a href="/app/events">Point Events</a>
+        <a href="/app/reports">Reports</a>
       </NavMenu>
       <Outlet />
     </AppProvider>
