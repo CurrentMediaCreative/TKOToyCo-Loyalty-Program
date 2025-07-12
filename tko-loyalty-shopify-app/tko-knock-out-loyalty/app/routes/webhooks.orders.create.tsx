@@ -4,19 +4,7 @@ import {
   createOrUpdateCustomer,
   getCustomerByShopifyId,
 } from "../services/customer.server";
-import {
-  createPointTransaction,
-  createBonusPointsTransaction,
-} from "../services/pointTransaction.server";
-import { calculateBonusPoints } from "../services/pointEvent.server";
-import {
-  fetchProductCollections,
-  isBinderPOSOrder,
-} from "../services/collections.server";
-import {
-  addPendingOrder,
-  removePendingOrder,
-} from "../services/pendingOrder.server";
+import { addPendingOrder } from "../services/pendingOrder.server";
 import {
   WebhookProcessor,
   WebhookPerformanceMonitor,
@@ -131,214 +119,6 @@ interface ShopifyOrder {
   };
 }
 
-/**
- * Process a fulfilled order for points calculation
- */
-async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
-  const customer = orderData.customer!;
-  const orderAmount = parseFloat(orderData.total_price);
-  const orderId = orderData.id.toString();
-  const orderName = orderData.name; // e.g., "#1001"
-
-  // Enhanced logging with customer details
-  const customerName =
-    `${customer.first_name || ""} ${customer.last_name || ""}`.trim() ||
-    "Unknown";
-  const customerEmail = customer.email || "No email";
-
-  console.log(
-    `📦 Processing fulfilled order ${orderName} ($${orderAmount.toFixed(2)})`,
-  );
-  console.log(
-    `👤 Customer: ${customerName} (${customerEmail}) - ID: ${customer.id}`,
-  );
-
-  // Fetch reliable customer data using GraphQL API (same pattern as dashboard)
-  let totalSpend = 0;
-  try {
-    const customerResponse = await admin.graphql(
-      `#graphql
-        query getCustomer($id: ID!) {
-          customer(id: $id) {
-            amountSpent {
-              amount
-            }
-          }
-        }`,
-      { variables: { id: customer.admin_graphql_api_id } },
-    );
-
-    const customerData = await customerResponse.json();
-    totalSpend = parseFloat(
-      customerData.data?.customer?.amountSpent?.amount || "0",
-    );
-    console.log(`💰 Customer total spend: $${totalSpend.toFixed(2)}`);
-  } catch (error) {
-    console.error("Error fetching customer data via GraphQL:", error);
-    // Fallback to 0 if GraphQL fails
-    totalSpend = 0;
-  }
-
-  // Create or update customer in our database
-  let loyaltyCustomer;
-  try {
-    loyaltyCustomer = await getCustomerByShopifyId(customer.id);
-
-    if (loyaltyCustomer) {
-      loyaltyCustomer = await createOrUpdateCustomer({
-        shopifyId: customer.id,
-        email: customer.email,
-        firstName: customer.first_name,
-        lastName: customer.last_name,
-        totalSpend: totalSpend,
-        lastOrderDate: new Date(orderData.created_at),
-        admin,
-      });
-    } else {
-      loyaltyCustomer = await createOrUpdateCustomer({
-        shopifyId: customer.id,
-        email: customer.email,
-        firstName: customer.first_name,
-        lastName: customer.last_name,
-        totalSpend: totalSpend,
-        lastOrderDate: new Date(orderData.created_at),
-        admin,
-      });
-    }
-  } catch (error) {
-    console.error(`Error creating/updating customer ${customer.id}:`, error);
-    throw error;
-  }
-
-  // Calculate base points (1 point per dollar spent)
-  const basePoints = Math.floor(orderAmount);
-
-  // Create base point transaction
-  if (basePoints > 0) {
-    await createPointTransaction({
-      customerId: loyaltyCustomer.id,
-      type: "earn",
-      amount: basePoints,
-      orderId,
-      description: `Points earned from order #${orderData.order_number}`,
-    });
-  }
-
-  // Extract product IDs and fetch their collections
-  const productIds = orderData.line_items.map((item) =>
-    item.product_id.toString(),
-  );
-  let productCollections: Record<string, string[]> = {};
-
-  try {
-    productCollections = await fetchProductCollections(admin, productIds);
-  } catch (error) {
-    console.error("Error fetching product collections:", error);
-    // Continue without collection data - bonus points will be skipped
-  }
-
-  // Prepare line items for bonus calculation (include ALL products)
-  const orderLineItems = orderData.line_items.map((item) => ({
-    productId: item.product_id.toString(),
-    price: parseFloat(item.price),
-    quantity: item.quantity,
-    collections: productCollections[item.product_id.toString()] || [],
-  }));
-
-  // Check if this is an in-store order (BinderPOS)
-  const isInstoreOrder = isBinderPOSOrder(orderData.note || null);
-
-  // Log product details
-  console.log(`🛍️ Products in order (${orderLineItems.length} items):`);
-  orderData.line_items.forEach((item, index) => {
-    const collections = productCollections[item.product_id.toString()] || [];
-    console.log(
-      `  ${index + 1}. ${item.title} - $${parseFloat(item.price).toFixed(2)} x${item.quantity}`,
-    );
-    if (collections.length > 0) {
-      console.log(`     Collections: [${collections.join(", ")}]`);
-    }
-  });
-
-  // Calculate bonus points
-  let bonusPoints = 0;
-  let appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
-  let eventNames: string[] = [];
-
-  if (orderLineItems.length > 0) {
-    try {
-      const bonusResult = await calculateBonusPoints({
-        orderLineItems,
-        isInstoreOrder,
-      });
-      bonusPoints = bonusResult.totalBonusPoints;
-      appliedEvents = bonusResult.appliedEvents;
-
-      // Get event names for logging
-      if (appliedEvents.length > 0) {
-        const { PrismaClient } = await import("@prisma/client");
-        const prisma = new PrismaClient();
-        try {
-          const events = await prisma.pointEvent.findMany({
-            where: { id: { in: appliedEvents.map((e) => e.eventId) } },
-            select: { id: true, name: true },
-          });
-          eventNames = events.map((e) => e.name);
-        } catch (error) {
-          console.error("Error fetching event names:", error);
-        } finally {
-          await prisma.$disconnect();
-        }
-      }
-    } catch (error) {
-      console.error("Error calculating bonus points:", error);
-      // Continue without bonus points
-    }
-  }
-
-  // Log applied events
-  if (appliedEvents.length > 0) {
-    console.log(`🎯 Applied point events:`);
-    appliedEvents.forEach((event, index) => {
-      const eventName = eventNames[index] || `Event ${event.eventId}`;
-      console.log(`  • ${eventName}: +${event.pointsAwarded} bonus points`);
-    });
-  } else {
-    console.log(`🎯 No point events qualified for this order`);
-  }
-
-  // Create bonus point transactions
-  for (const appliedEvent of appliedEvents) {
-    await createBonusPointsTransaction({
-      customerId: loyaltyCustomer.id,
-      amount: appliedEvent.pointsAwarded,
-      orderId,
-      eventId: appliedEvent.eventId,
-      description: `Bonus points from event for order #${orderData.order_number}`,
-      admin,
-    });
-  }
-
-  // Enhanced final logging
-  const totalPoints = basePoints + bonusPoints;
-  console.log(`✅ Order ${orderName} processed successfully:`);
-  console.log(
-    `   💎 Base points: ${basePoints} (from $${orderAmount.toFixed(2)})`,
-  );
-  console.log(`   🎁 Bonus points: ${bonusPoints}`);
-  console.log(`   🏆 Total points awarded: ${totalPoints}`);
-  console.log(
-    `   📍 Order type: ${isInstoreOrder ? "In-store (BinderPOS)" : "Online"}`,
-  );
-
-  return {
-    basePoints,
-    bonusPoints,
-    appliedEvents,
-    customerId: loyaltyCustomer.id,
-  };
-}
-
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const { shop, topic, admin, payload } = await authenticate.webhook(request);
@@ -368,98 +148,81 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const result = await processor.processWebhook(async (admin) => {
       const orderId = orderData.id.toString();
 
-      // Check fulfillment status
-      const isFulfilled = orderData.fulfillment_status === "fulfilled";
+      // Add to pending orders queue (regardless of fulfillment status)
+      // Get or create customer first to get the customer ID
+      let loyaltyCustomer = await getCustomerByShopifyId(
+        orderData.customer!.id,
+      );
 
-      if (isFulfilled) {
-        // Process fulfilled order immediately
-        // Remove from pending orders if it exists
-        await removePendingOrder(orderId);
-
-        // Process the order
-        const processResult = await processFulfilledOrder(orderData, admin);
-
-        return {
-          ...processResult,
-          status: "fulfilled",
-        };
-      } else {
-        // Add to pending orders queue
-        // Get or create customer first to get the customer ID
-        let loyaltyCustomer = await getCustomerByShopifyId(
-          orderData.customer!.id,
-        );
-
-        if (!loyaltyCustomer) {
-          // Fetch reliable customer data using GraphQL API for pending orders too
-          let totalSpend = 0;
-          try {
-            const customerResponse = await admin.graphql(
-              `#graphql
-                query getCustomer($id: ID!) {
-                  customer(id: $id) {
-                    amountSpent {
-                      amount
-                    }
+      if (!loyaltyCustomer) {
+        // Fetch reliable customer data using GraphQL API for pending orders too
+        let totalSpend = 0;
+        try {
+          const customerResponse = await admin.graphql(
+            `#graphql
+              query getCustomer($id: ID!) {
+                customer(id: $id) {
+                  amountSpent {
+                    amount
                   }
-                }`,
-              { variables: { id: orderData.customer!.admin_graphql_api_id } },
-            );
+                }
+              }`,
+            { variables: { id: orderData.customer!.admin_graphql_api_id } },
+          );
 
-            const customerData = await customerResponse.json();
-            totalSpend = parseFloat(
-              customerData.data?.customer?.amountSpent?.amount || "0",
-            );
-            console.log(
-              `Fetched reliable customer total spend for pending order: ${totalSpend}`,
-            );
-          } catch (error) {
-            console.error(
-              "Error fetching customer data via GraphQL for pending order:",
-              error,
-            );
-            // Fallback to 0 if GraphQL fails
-            totalSpend = 0;
-          }
-
-          loyaltyCustomer = await createOrUpdateCustomer({
-            shopifyId: orderData.customer!.id,
-            email: orderData.customer!.email,
-            firstName: orderData.customer!.first_name,
-            lastName: orderData.customer!.last_name,
-            totalSpend: totalSpend,
-            lastOrderDate: new Date(orderData.created_at),
-            admin,
-          });
+          const customerData = await customerResponse.json();
+          totalSpend = parseFloat(
+            customerData.data?.customer?.amountSpent?.amount || "0",
+          );
+          console.log(
+            `Fetched reliable customer total spend for pending order: ${totalSpend}`,
+          );
+        } catch (error) {
+          console.error(
+            "Error fetching customer data via GraphQL for pending order:",
+            error,
+          );
+          // Fallback to 0 if GraphQL fails
+          totalSpend = 0;
         }
 
-        await addPendingOrder({
-          shopifyOrderId: orderId,
-          customerId: loyaltyCustomer.id,
-          orderData,
+        loyaltyCustomer = await createOrUpdateCustomer({
+          shopifyId: orderData.customer!.id,
+          email: orderData.customer!.email,
+          firstName: orderData.customer!.first_name,
+          lastName: orderData.customer!.last_name,
+          totalSpend: totalSpend,
+          lastOrderDate: new Date(orderData.created_at),
+          admin,
         });
-
-        const customerName = orderData.customer
-          ? `${orderData.customer.first_name || ""} ${orderData.customer.last_name || ""}`.trim() ||
-            "Unknown"
-          : "No customer";
-        const customerEmail = orderData.customer?.email || "No email";
-
-        console.log(`⏳ Order ${orderData.name} added to pending queue`);
-        console.log(
-          `   📋 Fulfillment status: ${orderData.fulfillment_status || "unfulfilled"}`,
-        );
-        console.log(`   👤 Customer: ${customerName} (${customerEmail})`);
-        console.log(
-          `   💰 Order total: $${parseFloat(orderData.total_price).toFixed(2)}`,
-        );
-
-        return {
-          status: "pending",
-          fulfillmentStatus: orderData.fulfillment_status,
-          customerId: loyaltyCustomer.id,
-        };
       }
+
+      await addPendingOrder({
+        shopifyOrderId: orderId,
+        customerId: loyaltyCustomer!.id,
+        orderData,
+      });
+
+      const customerName = orderData.customer
+        ? `${orderData.customer.first_name || ""} ${orderData.customer.last_name || ""}`.trim() ||
+          "Unknown"
+        : "No customer";
+      const customerEmail = orderData.customer?.email || "No email";
+
+      console.log(`⏳ Order ${orderData.name} added to pending queue`);
+      console.log(
+        `   📋 Fulfillment status: ${orderData.fulfillment_status || "unfulfilled"}`,
+      );
+      console.log(`   👤 Customer: ${customerName} (${customerEmail})`);
+      console.log(
+        `   💰 Order total: $${parseFloat(orderData.total_price).toFixed(2)}`,
+      );
+
+      return {
+        status: "pending",
+        fulfillmentStatus: orderData.fulfillment_status,
+        customerId: loyaltyCustomer!.id,
+      };
     }, orderData);
 
     // Log performance metrics

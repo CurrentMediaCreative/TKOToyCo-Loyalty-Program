@@ -50,7 +50,8 @@ model TierBenefit {
 model Customer {
   id            String             @id
   shopifyId     BigInt             @unique
-  email         String?
+  email         String?            // Legacy field - will be removed after migration
+  emails        String[]           @default([]) // Array of all emails for this customer
   firstName     String?
   lastName      String?
   phone         String?
@@ -77,6 +78,7 @@ model Customer {
 
   @@index([totalPoints])
   @@index([email])
+  @@index([emails])
   @@index([phone])
   @@index([lastSyncAt])
   @@index([isActive])

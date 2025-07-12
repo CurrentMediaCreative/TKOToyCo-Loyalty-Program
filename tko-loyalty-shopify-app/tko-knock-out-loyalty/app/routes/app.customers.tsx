@@ -223,7 +223,7 @@ export default function CustomersPage() {
 
     if (hasReigningChampionTag) {
       return "Reigning Champion"; // Manually assigned tier overrides points tier
-    } else if (totalPoints >= 25000) {
+    } else if (totalPoints >= 30000) {
       return "Heavyweight";
     } else if (totalPoints >= 5000) {
       return "Welterweight";

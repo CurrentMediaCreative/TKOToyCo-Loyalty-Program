@@ -8,6 +8,7 @@ type CustomerWithPoints = {
   id: string;
   shopifyId: bigint;
   email: string | null;
+  emails: string[];
   firstName: string | null;
   lastName: string | null;
   totalSpend: number;
@@ -31,7 +32,7 @@ export async function getCustomers() {
       // @ts-ignore - totalPoints exists in the database but not in the generated types
       totalPoints: "desc",
     },
-  }) as Promise<CustomerWithPoints[]>;
+  }) as unknown as Promise<CustomerWithPoints[]>;
 }
 
 export async function getCustomerById(id: string) {
@@ -114,11 +115,27 @@ export async function createOrUpdateCustomer({
     }
   }
 
+  // Handle emails array - add email to emails array if provided and not already present
+  let emailsToUpdate: string[] | undefined;
+  if (email) {
+    // Get existing emails
+    const existingCustomer = await prisma.customer.findUnique({
+      where: { shopifyId: BigInt(shopifyId) },
+      select: { emails: true },
+    });
+
+    const existingEmails = existingCustomer?.emails || [];
+    if (!existingEmails.includes(email)) {
+      emailsToUpdate = [...existingEmails, email];
+    }
+  }
+
   // Create or update the customer in our database
   const customer = await prisma.customer.upsert({
     where: { shopifyId: BigInt(shopifyId) },
     update: {
       email,
+      emails: emailsToUpdate,
       firstName,
       lastName,
       totalSpend: totalSpend !== undefined ? Math.round(totalSpend) : undefined,
@@ -132,6 +149,7 @@ export async function createOrUpdateCustomer({
       id,
       shopifyId: BigInt(shopifyId),
       email,
+      emails: email ? [email] : [],
       firstName,
       lastName,
       totalSpend: Math.round(totalSpend || 0),
@@ -239,7 +257,7 @@ export async function getCustomersPaginated({
     },
     take: limit,
     skip: offset,
-  })) as CustomerWithPoints[];
+  })) as unknown as CustomerWithPoints[];
 
   return {
     customers,

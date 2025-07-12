@@ -140,7 +140,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
       if (hasReigningChampionTag) {
         tier = "Reigning Champion";
-      } else if (spent >= 25000) {
+      } else if (spent >= 30000) {
         tier = "Heavyweight";
       } else if (spent >= 5000) {
         tier = "Welterweight";
@@ -178,7 +178,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       { id: "featherweight", name: "Featherweight", minSpend: 0 },
       { id: "lightweight", name: "Lightweight", minSpend: 1500 },
       { id: "welterweight", name: "Welterweight", minSpend: 5000 },
-      { id: "heavyweight", name: "Heavyweight", minSpend: 25000 },
+      { id: "heavyweight", name: "Heavyweight", minSpend: 30000 },
       { id: "reigning-champion", name: "Reigning Champion", minSpend: 0 }, // Invite-only
     ];
 

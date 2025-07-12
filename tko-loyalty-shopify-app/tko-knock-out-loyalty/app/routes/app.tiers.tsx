@@ -48,55 +48,98 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       color: tier.description?.includes("#") ? tier.description : "#E0E0E0", // Use description field to store color temporarily
     }));
 
-    // If no tiers exist yet, create default tiers
+    // If no tiers exist yet, create default tiers with updated thresholds and real benefits
     if (tiers.length === 0) {
       const defaultTiers = [
         {
-          name: "Featherweight",
+          name: "🥊 Featherweight",
           description: "#E0E0E0",
           minPoints: 0,
-          benefits: ["Welcome gift", "Birthday reward", "Exclusive newsletter"],
+          benefits: [
+            "Access to Store Wide Bonus Point Days",
+            "Community Bonus Points (Events + Tournaments)",
+            "Discord Access",
+          ],
         },
         {
-          name: "Lightweight",
+          name: "🥋 Lightweight",
           description: "#FFD23F",
           minPoints: 1500,
           benefits: [
             "All Featherweight benefits",
-            "Early access to sales",
-            "Free shipping on orders over $50",
+            "3% Singles Discount",
+            "1% Sealed Discount",
+            "5% Supplies Discount",
+            "5% Toys & Board Games Discount",
+            "Guaranteed Lightweight tier maintenance",
           ],
         },
         {
-          name: "Welterweight",
+          name: "🥇 Welterweight",
           description: "#FF7C2A",
           minPoints: 5000,
           benefits: [
             "All Lightweight benefits",
-            "Double points on purchases",
-            "Exclusive product access",
+            "1.25x Points Per $1 Spent",
+            "7% Singles Discount",
+            "2% Sealed Discount",
+            "10% Supplies Discount",
+            "8% Toys & Board Games Discount",
+            "🎁 Birthday Gift ($25+ value)",
+            "2x Points Every Wednesday",
+            "2x Points Every 1st of Month",
+            "Access to Pre-Orders (case by case)",
+            "Exclusive Early Access Pricing",
+            "Priority Registration for Events",
+            "Same Day Price + Product Lock",
+            "Lock In Your Tier 1x (Tier Freeze)",
+            "15,000pts to Keep Welterweight",
           ],
         },
         {
-          name: "Heavyweight",
+          name: "🏅 Heavyweight",
           description: "#00B8A2",
-          minPoints: 25000,
+          minPoints: 30000,
           benefits: [
             "All Welterweight benefits",
-            "Free shipping on all orders",
-            "VIP customer service",
+            "1.5x Points Per $1 Spent",
+            "10% Singles Discount",
+            "3% Sealed Discount",
+            "15% Supplies Discount",
+            "13% Toys & Board Games Discount",
+            "🎁 Birthday Gift ($150+ value)",
+            "Exclusive Bonus Point Day Events",
+            "Guaranteed Access to Pre-Orders (1 item per SKU)",
+            "Preferred Member Pricing",
+            "Private Tier Events",
+            "Priority Discord Channels",
+            "48hrs Price + Product Lock",
+            "🎁 Quarterly Mystery Drop",
+            "Lock In Your Tier 2x (Tier Freeze)",
+            "45,000pts to Keep Heavyweight",
           ],
         },
         {
-          name: "Reigning Champion",
+          name: "👑 Reigning Champion",
           description: "#1F2937",
           minPoints: 9999999, // Effectively invite-only (unattainable value)
           benefits: [
             "All Heavyweight benefits",
-            "Personal shopping assistant",
-            "Exclusive events access",
-            "Annual gift",
-            "Invite-only status",
+            "2x Points Per $1 Spent",
+            "15% Singles Discount",
+            "5% Sealed Discount",
+            "20% Supplies Discount",
+            "15% Toys & Board Games Discount",
+            "🎁 Curated Premium Birthday Gift",
+            "Custom-curated Bonus Point Offers",
+            "Guaranteed Access to Pre-Orders (1 case limit per SKU)",
+            "Elite Priority Pricing (Best Available Rate)",
+            "VIP-only Event Invites",
+            "Priority Discord Channels",
+            "72hr Price + Product Lock",
+            "🎁 Monthly Premium Mystery Bundle",
+            "Guaranteed Heavyweight tier maintenance",
+            "Invite-only status (up to 20 per year)",
           ],
         },
       ];
@@ -343,6 +386,321 @@ export default function TiersPage() {
       <Layout>
         <Layout.Section>
           <BlockStack gap="500">
+            {/* Benefits Comparison Table */}
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between">
+                  <div>
+                    <Text as="h2" variant="headingMd">
+                      Tier Benefits Comparison
+                    </Text>
+                    <Text as="p" variant="bodyMd">
+                      Compare benefits across all loyalty tiers. Click on any
+                      benefit to edit.
+                    </Text>
+                  </div>
+                </InlineStack>
+
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ backgroundColor: "#f6f6f7" }}>
+                        <th
+                          style={{
+                            padding: "12px",
+                            textAlign: "left",
+                            borderBottom: "1px solid #e1e3e5",
+                            fontWeight: "600",
+                            minWidth: "200px",
+                          }}
+                        >
+                          Perk
+                        </th>
+                        <th
+                          style={{
+                            padding: "12px",
+                            textAlign: "center",
+                            borderBottom: "1px solid #e1e3e5",
+                            fontWeight: "600",
+                            minWidth: "150px",
+                          }}
+                        >
+                          🥊 Featherweight
+                          <br />
+                          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+                            (0 – 1,499 pts)
+                          </span>
+                        </th>
+                        <th
+                          style={{
+                            padding: "12px",
+                            textAlign: "center",
+                            borderBottom: "1px solid #e1e3e5",
+                            fontWeight: "600",
+                            minWidth: "150px",
+                          }}
+                        >
+                          🥋 Lightweight
+                          <br />
+                          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+                            (1,500 – 4,999 pts)
+                          </span>
+                        </th>
+                        <th
+                          style={{
+                            padding: "12px",
+                            textAlign: "center",
+                            borderBottom: "1px solid #e1e3e5",
+                            fontWeight: "600",
+                            minWidth: "150px",
+                          }}
+                        >
+                          🥇 Welterweight
+                          <br />
+                          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+                            (5,000 – 29,999 pts)
+                          </span>
+                        </th>
+                        <th
+                          style={{
+                            padding: "12px",
+                            textAlign: "center",
+                            borderBottom: "1px solid #e1e3e5",
+                            fontWeight: "600",
+                            minWidth: "150px",
+                          }}
+                        >
+                          🏅 Heavyweight
+                          <br />
+                          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+                            (30,000+ pts)
+                          </span>
+                        </th>
+                        <th
+                          style={{
+                            padding: "12px",
+                            textAlign: "center",
+                            borderBottom: "1px solid #e1e3e5",
+                            fontWeight: "600",
+                            minWidth: "150px",
+                          }}
+                        >
+                          👑 Reigning Champion
+                          <br />
+                          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+                            (Invite Only)
+                          </span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        {
+                          perk: "Points Per $1 Spent",
+                          featherweight: "–",
+                          lightweight: "–",
+                          welterweight: "1.25x",
+                          heavyweight: "1.5x",
+                          reigningChampion: "2x",
+                        },
+                        {
+                          perk: "Singles Discount",
+                          featherweight: "–",
+                          lightweight: "3%",
+                          welterweight: "7%",
+                          heavyweight: "10%",
+                          reigningChampion: "15%",
+                        },
+                        {
+                          perk: "Sealed Discount",
+                          featherweight: "–",
+                          lightweight: "1%",
+                          welterweight: "2%",
+                          heavyweight: "3%",
+                          reigningChampion: "5%",
+                        },
+                        {
+                          perk: "Supplies Discount",
+                          featherweight: "–",
+                          lightweight: "5%",
+                          welterweight: "10%",
+                          heavyweight: "15%",
+                          reigningChampion: "20%",
+                        },
+                        {
+                          perk: "Toys & Board Games Discount",
+                          featherweight: "–",
+                          lightweight: "5%",
+                          welterweight: "8%",
+                          heavyweight: "13%",
+                          reigningChampion: "15%",
+                        },
+                        {
+                          perk: "Birthday Gift",
+                          featherweight: "–",
+                          lightweight: "–",
+                          welterweight: "🎁 Gift ($25+ value)",
+                          heavyweight: "🎁 Gift ($150+ value)",
+                          reigningChampion: "🎁 Curated Premium Gift",
+                        },
+                        {
+                          perk: "Bonus Point Days",
+                          featherweight: "Store Wide BPDs",
+                          lightweight: "Store Wide BPDs",
+                          welterweight: "Store Wide BPDs + 2x Wed + 2x 1st",
+                          heavyweight: "All Above + Exclusive Events",
+                          reigningChampion: "Custom-curated Offers",
+                        },
+                        {
+                          perk: "Early Product Access",
+                          featherweight: "–",
+                          lightweight: "–",
+                          welterweight: "Pre-Orders (case by case)",
+                          heavyweight: "Guaranteed Pre-Orders (1 item/SKU)",
+                          reigningChampion:
+                            "Guaranteed Pre-Orders (1 case/SKU)",
+                        },
+                        {
+                          perk: "Early Access Pricing",
+                          featherweight: "–",
+                          lightweight: "–",
+                          welterweight: "Exclusive Early Access",
+                          heavyweight: "Preferred Member Pricing",
+                          reigningChampion: "Elite Priority Pricing",
+                        },
+                        {
+                          perk: "Exclusive Events",
+                          featherweight: "–",
+                          lightweight: "–",
+                          welterweight: "Priority Registration",
+                          heavyweight: "Private Tier Events",
+                          reigningChampion: "VIP-only Invites",
+                        },
+                        {
+                          perk: "Discord Access",
+                          featherweight: "Access",
+                          lightweight: "Access",
+                          welterweight: "Access",
+                          heavyweight: "Priority Channels",
+                          reigningChampion: "Priority Channels",
+                        },
+                        {
+                          perk: "Price + Product Holds",
+                          featherweight: "–",
+                          lightweight: "–",
+                          welterweight: "Same Day Lock",
+                          heavyweight: "48hrs Lock",
+                          reigningChampion: "72hr Lock",
+                        },
+                        {
+                          perk: "Mystery Rewards",
+                          featherweight: "–",
+                          lightweight: "–",
+                          welterweight: "–",
+                          heavyweight: "🎁 Quarterly Drop",
+                          reigningChampion: "🎁 Monthly Premium Bundle",
+                        },
+                        {
+                          perk: "Tier Freeze",
+                          featherweight: "–",
+                          lightweight: "–",
+                          welterweight: "Lock In Tier 1x",
+                          heavyweight: "Lock In Tier 2x",
+                          reigningChampion: "–",
+                        },
+                      ].map((benefit, index) => (
+                        <tr
+                          key={index}
+                          style={{
+                            borderBottom: "1px solid #e1e3e5",
+                            backgroundColor:
+                              index % 2 === 0 ? "#fafbfb" : "white",
+                          }}
+                        >
+                          <td
+                            style={{
+                              padding: "12px",
+                              fontWeight: "500",
+                              borderRight: "1px solid #e1e3e5",
+                            }}
+                          >
+                            {benefit.perk}
+                          </td>
+                          <td
+                            style={{
+                              padding: "12px",
+                              textAlign: "center",
+                              color:
+                                benefit.featherweight === "–"
+                                  ? "#6d7175"
+                                  : "#202223",
+                            }}
+                          >
+                            {benefit.featherweight}
+                          </td>
+                          <td
+                            style={{
+                              padding: "12px",
+                              textAlign: "center",
+                              color:
+                                benefit.lightweight === "–"
+                                  ? "#6d7175"
+                                  : "#202223",
+                            }}
+                          >
+                            {benefit.lightweight}
+                          </td>
+                          <td
+                            style={{
+                              padding: "12px",
+                              textAlign: "center",
+                              color:
+                                benefit.welterweight === "–"
+                                  ? "#6d7175"
+                                  : "#202223",
+                            }}
+                          >
+                            {benefit.welterweight}
+                          </td>
+                          <td
+                            style={{
+                              padding: "12px",
+                              textAlign: "center",
+                              color:
+                                benefit.heavyweight === "–"
+                                  ? "#6d7175"
+                                  : "#202223",
+                            }}
+                          >
+                            {benefit.heavyweight}
+                          </td>
+                          <td
+                            style={{
+                              padding: "12px",
+                              textAlign: "center",
+                              color:
+                                benefit.reigningChampion === "–"
+                                  ? "#6d7175"
+                                  : "#202223",
+                            }}
+                          >
+                            {benefit.reigningChampion}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </BlockStack>
+            </Card>
+
+            {/* Tier Configuration */}
             <Card>
               <BlockStack gap="400">
                 <InlineStack align="space-between">
@@ -351,9 +709,8 @@ export default function TiersPage() {
                       Tier Configuration
                     </Text>
                     <Text as="p" variant="bodyMd">
-                      Configure your loyalty program tiers and their benefits.
-                      Customers automatically receive tier benefits when they
-                      reach the required points.
+                      Configure your loyalty program tiers and their thresholds.
+                      Benefits are managed in the comparison table above.
                     </Text>
                   </div>
                   <Button

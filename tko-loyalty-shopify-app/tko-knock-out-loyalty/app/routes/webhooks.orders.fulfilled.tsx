@@ -18,6 +18,7 @@ import {
   WebhookProcessor,
   WebhookPerformanceMonitor,
 } from "../services/webhookProcessor.server";
+import { createOrUpdateOrder } from "../services/order.server";
 
 interface OrderLineItem {
   id: string;
@@ -209,6 +210,16 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
   } catch (error) {
     console.error(`Error creating/updating customer ${customer.id}:`, error);
     throw error;
+  }
+
+  // Save the order to our database
+  try {
+    console.log(`💾 Saving order #${orderData.order_number} to database`);
+    await createOrUpdateOrder(orderData, loyaltyCustomer.id);
+    console.log(`✅ Order #${orderData.order_number} saved to database`);
+  } catch (error) {
+    console.error(`❌ Error saving order #${orderData.order_number}:`, error);
+    // Continue with points processing even if order save fails
   }
 
   // Note: Base/spend points are handled by the existing loyalty system
