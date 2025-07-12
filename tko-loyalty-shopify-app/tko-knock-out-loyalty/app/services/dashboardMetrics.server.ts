@@ -47,25 +47,6 @@ interface CustomerSpender {
   periodSpending: number; // Spending for the specific period (daily/monthly)
 }
 
-interface OrderNode {
-  totalPriceSet: {
-    shopMoney: {
-      amount: string;
-    };
-  };
-  customer: {
-    id: string;
-    displayName?: string;
-    firstName?: string;
-    lastName?: string;
-    amountSpent: {
-      amount: string;
-    };
-    numberOfOrders: number;
-    tags: string[];
-  } | null;
-}
-
 /**
  * Get fully optimized dashboard metrics using ONLY cached database data
  * NO API CALLS - uses webhook-populated customer data for maximum performance
@@ -143,9 +124,9 @@ export async function getDashboardMetrics(
         customer.lastOrderDate && customer.lastOrderDate >= thirtyDaysAgo,
     ).length;
 
-    // Calculate growth metrics (simplified for performance)
-    const customerGrowth = calculateCustomerGrowth(allCustomers.length);
-    const spendingGrowth = calculateSpendingGrowth(monthSpending);
+    // Calculate real growth metrics from database
+    const customerGrowth = await calculateCustomerGrowth();
+    const spendingGrowth = await calculateSpendingGrowth(monthSpending);
 
     const endTime = Date.now();
     console.log(
@@ -208,370 +189,12 @@ function calculateESTDateRanges() {
 }
 
 /**
- * Calculate EST date ranges and convert to UTC for Shopify queries (LEGACY - NOT USED)
- *
- * Shopify's processed_at field is in UTC, so we need to convert EST business logic
- * to UTC date ranges for accurate filtering.
- */
-function calculateDateRanges() {
-  const now = new Date();
-
-  // Get current EST time (handles DST automatically)
-  const estTime = new Date(
-    now.toLocaleString("en-US", { timeZone: "America/New_York" }),
-  );
-
-  // Create EST date boundaries (start of day in EST)
-  const todayEST = new Date(
-    estTime.getFullYear(),
-    estTime.getMonth(),
-    estTime.getDate(),
-  );
-  const firstDayOfMonthEST = new Date(
-    estTime.getFullYear(),
-    estTime.getMonth(),
-    1,
-  );
-  const firstDayOfYearEST = new Date(estTime.getFullYear(), 0, 1);
-  const thirtyDaysAgoEST = new Date(estTime);
-  thirtyDaysAgoEST.setDate(thirtyDaysAgoEST.getDate() - 30);
-
-  // Convert EST boundaries to UTC for Shopify API
-  // We need to account for the EST offset when converting to UTC
-  const estOffset = estTime.getTimezoneOffset(); // Minutes difference from UTC
-
-  const todayStartUTC = new Date(todayEST.getTime() - estOffset * 60000);
-  const todayEndUTC = new Date(
-    todayStartUTC.getTime() + 24 * 60 * 60 * 1000 - 1000,
-  ); // End of day
-
-  const monthStartUTC = new Date(
-    firstDayOfMonthEST.getTime() - estOffset * 60000,
-  );
-  const monthEndUTC = new Date(estTime.getTime() - estOffset * 60000);
-
-  const yearStartUTC = new Date(
-    firstDayOfYearEST.getTime() - estOffset * 60000,
-  );
-  const yearEndUTC = new Date(estTime.getTime() - estOffset * 60000);
-
-  const thirtyDaysAgoUTC = new Date(
-    thirtyDaysAgoEST.getTime() - estOffset * 60000,
-  );
-
-  console.log("🕐 Timezone conversion:", {
-    estTime: estTime.toISOString(),
-    estOffset: estOffset,
-    todayEST: todayEST.toISOString(),
-    todayStartUTC: todayStartUTC.toISOString(),
-    todayEndUTC: todayEndUTC.toISOString(),
-  });
-
-  return {
-    todayUTC: {
-      start: todayStartUTC.toISOString().split("T")[0],
-      end: todayEndUTC.toISOString().split("T")[0],
-    },
-    monthStartUTC: {
-      start: monthStartUTC.toISOString().split("T")[0],
-      end: monthEndUTC.toISOString().split("T")[0],
-    },
-    yearStartUTC: {
-      start: yearStartUTC.toISOString().split("T")[0],
-      end: yearEndUTC.toISOString().split("T")[0],
-    },
-    thirtyDaysAgoUTC: thirtyDaysAgoUTC.toISOString().split("T")[0],
-  };
-}
-
-/**
- * Fetch all orders for a date period using cursor-based pagination
- */
-async function fetchAllOrdersForPeriod(
-  admin: AdminApiContext,
-  startDate: string,
-  endDate: string,
-  period: string,
-): Promise<OrderNode[]> {
-  let allOrders: OrderNode[] = [];
-  let hasNextPage = true;
-  let cursor: string | null = null;
-  let pageCount = 0;
-
-  console.log(`📥 Fetching ${period} orders from ${startDate} to ${endDate}`);
-
-  try {
-    while (hasNextPage) {
-      const response: any = await admin.graphql(
-        `
-        query getOrdersForPeriod($startDate: String!, $endDate: String!, $cursor: String) {
-          orders(
-            first: 250,
-            after: $cursor,
-            query: "processed_at:>=${startDate} processed_at:<=${endDate}",
-            sortKey: PROCESSED_AT,
-            reverse: true
-          ) {
-            nodes {
-              totalPriceSet {
-                shopMoney {
-                  amount
-                }
-              }
-              customer {
-                id
-                displayName
-                firstName
-                lastName
-                amountSpent {
-                  amount
-                }
-                numberOfOrders
-                tags
-              }
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
-          }
-        }
-      `,
-        {
-          variables: {
-            startDate,
-            endDate,
-            cursor,
-          },
-        },
-      );
-
-      const responseJson: any = await response.json();
-      const ordersData: any = responseJson.data?.orders;
-
-      if (!ordersData) {
-        console.error(`No orders data returned for ${period}`);
-        break;
-      }
-
-      const pageOrders = ordersData.nodes || [];
-      allOrders = [...allOrders, ...pageOrders];
-
-      hasNextPage = ordersData.pageInfo.hasNextPage;
-      cursor = ordersData.pageInfo.endCursor;
-      pageCount++;
-
-      console.log(
-        `📄 ${period} page ${pageCount}: ${pageOrders.length} orders (total: ${allOrders.length})`,
-      );
-    }
-
-    console.log(
-      `✅ ${period} orders complete: ${allOrders.length} total orders`,
-    );
-    return allOrders;
-  } catch (error) {
-    console.error(`❌ Error fetching ${period} orders:`, error);
-    throw error;
-  }
-}
-
-/**
- * Aggregate orders by customer and calculate period spending
- */
-async function aggregateOrdersByCustomer(
-  orders: OrderNode[],
-  period: string,
-): Promise<CustomerSpender[]> {
-  const customerTotals = new Map<string, CustomerSpender>();
-
-  // First pass: aggregate spending by customer
-  orders.forEach((order) => {
-    const customer = order.customer;
-    if (!customer?.id) return;
-
-    const orderAmount = parseFloat(order.totalPriceSet.shopMoney.amount || "0");
-    const customerId = customer.id;
-
-    const existing = customerTotals.get(customerId) || {
-      id: customer.id,
-      firstName: customer.firstName || "",
-      lastName: customer.lastName || "",
-      name:
-        `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
-        customer.displayName ||
-        "Unknown",
-      amountSpent: customer.amountSpent,
-      numberOfOrders: customer.numberOfOrders,
-      tags: customer.tags || [],
-      tier: "Featherweight", // Default, will be updated below
-      periodSpending: 0,
-    };
-
-    existing.periodSpending += orderAmount;
-    customerTotals.set(customerId, existing);
-  });
-
-  // Second pass: look up actual tiers from our database
-  const customers = Array.from(customerTotals.values());
-  for (const customer of customers) {
-    try {
-      // Extract Shopify ID from the full ID
-      const shopifyId = parseInt(
-        customer.id.replace("gid://shopify/Customer/", ""),
-      );
-
-      // Look up customer in our database
-      const dbCustomer = await prisma.customer.findUnique({
-        where: { shopifyId },
-        select: { totalPoints: true },
-      });
-
-      if (dbCustomer) {
-        // Use our points-based tier calculation
-        customer.tier = await getCustomerTier(dbCustomer.totalPoints || 0);
-      } else {
-        // Fallback to Shopify-based calculation if not in our database
-        customer.tier = calculateCustomerTier(customer);
-      }
-    } catch (error) {
-      console.warn(`Failed to get tier for customer ${customer.id}:`, error);
-      // Fallback to Shopify-based calculation
-      customer.tier = calculateCustomerTier(customer);
-    }
-  }
-
-  // Sort by period spending (daily/monthly totals)
-  const sortedCustomers = customers.sort(
-    (a, b) => b.periodSpending - a.periodSpending,
-  );
-
-  console.log(
-    `🏆 ${period} top spenders:`,
-    sortedCustomers
-      .slice(0, 3)
-      .map((c) => `${c.name}: $${c.periodSpending.toFixed(2)} (${c.tier})`),
-  );
-
-  return sortedCustomers;
-}
-
-/**
- * Calculate revenue from orders array
- */
-function calculateRevenueFromOrders(orders: OrderNode[]): number {
-  return orders.reduce((total, order) => {
-    return total + parseFloat(order.totalPriceSet.shopMoney.amount || "0");
-  }, 0);
-}
-
-/**
- * Get total customer count using the proper customersCount API
- */
-async function getTotalCustomerCount(admin: AdminApiContext): Promise<number> {
-  const response = await admin.graphql(`
-    query CustomerCount {
-      customersCount {
-        count
-      }
-    }
-  `);
-
-  const data = await response.json();
-  return data.data?.customersCount?.count || 0;
-}
-
-/**
- * Get active customer count (customers with orders in last 30 days)
- */
-async function getActiveCustomerCount(
-  admin: AdminApiContext,
-  thirtyDaysAgoDate: string,
-): Promise<number> {
-  const response = await admin.graphql(
-    `
-    query getActiveCustomers($activeQuery: String!) {
-      customers(first: 250, query: $activeQuery) {
-        edges {
-          node {
-            id
-          }
-        }
-        pageInfo {
-          hasNextPage
-        }
-      }
-    }
-  `,
-    {
-      variables: {
-        activeQuery: `last_order_date:>=${thirtyDaysAgoDate}`,
-      },
-    },
-  );
-
-  const data = await response.json();
-  return data.data?.customers?.edges?.length || 0;
-}
-
-/**
- * Get all-time revenue from customer total spent
- */
-async function getAllTimeRevenue(admin: AdminApiContext): Promise<number> {
-  const response = await admin.graphql(`
-    query getAllTimeRevenue {
-      customers(first: 250, sortKey: UPDATED_AT, reverse: true) {
-        edges {
-          node {
-            amountSpent {
-              amount
-            }
-          }
-        }
-        pageInfo {
-          hasNextPage
-        }
-      }
-    }
-  `);
-
-  const data = await response.json();
-  const customers = data.data?.customers?.edges || [];
-
-  return customers.reduce((total: number, edge: any) => {
-    return total + parseFloat(edge.node.amountSpent?.amount || "0");
-  }, 0);
-}
-
-/**
- * Calculate customer tier based on spending and tags
- */
-function calculateCustomerTier(customer: any): string {
-  const spent = parseFloat(customer.amountSpent?.amount || "0");
-
-  // Check for manually assigned "Reigning Champion" tag
-  const hasReigningChampionTag = customer.tags?.some(
-    (tag: string) => tag.toLowerCase() === "reigning champion",
-  );
-
-  if (hasReigningChampionTag) {
-    return "Reigning Champion";
-  } else if (spent >= 25000) {
-    return "Heavyweight";
-  } else if (spent >= 5000) {
-    return "Welterweight";
-  } else if (spent >= 1500) {
-    return "Lightweight";
-  } else {
-    return "Featherweight";
-  }
-}
-
-/**
  * Calculate tier distribution using our database and points system
  * Much faster than Shopify API - single database query vs 20+ API calls
  */
-async function calculateTierDistribution(): Promise<Record<string, number>> {
+async function calculateTierDistributionFromDB(): Promise<
+  Record<string, number>
+> {
   console.log("🎯 Calculating tier distribution from database...");
 
   const tierCounts: Record<string, number> = {
@@ -614,19 +237,256 @@ async function calculateTierDistribution(): Promise<Record<string, number>> {
 }
 
 /**
- * Calculate customer growth (simplified for performance)
+ * Calculate total revenue from database orders
  */
-function calculateCustomerGrowth(totalCustomers: number): number {
-  // Mock 10% growth for performance (could be enhanced with historical data)
-  const lastMonthCustomers = Math.floor(totalCustomers * 0.9);
-  return ((totalCustomers - lastMonthCustomers) / lastMonthCustomers) * 100;
+async function calculateTotalRevenueFromDB(): Promise<number> {
+  try {
+    const result = await prisma.order.aggregate({
+      _sum: {
+        totalAmount: true,
+      },
+      where: {
+        fulfillmentStatus: "fulfilled",
+      },
+    });
+
+    const totalAmount = result._sum.totalAmount;
+    return totalAmount ? parseFloat(totalAmount.toString()) : 0;
+  } catch (error) {
+    console.error("❌ Error calculating total revenue:", error);
+    return 0;
+  }
 }
 
 /**
- * Calculate spending growth (simplified for performance)
+ * Calculate month revenue from database orders
  */
-function calculateSpendingGrowth(monthSpending: number): number {
-  // Mock 15% growth for performance (could be enhanced with historical data)
-  const lastMonthSpending = monthSpending * 0.85;
-  return ((monthSpending - lastMonthSpending) / lastMonthSpending) * 100;
+async function calculateMonthRevenueFromDB(monthStart: Date): Promise<number> {
+  try {
+    const result = await prisma.order.aggregate({
+      _sum: {
+        totalAmount: true,
+      },
+      where: {
+        fulfillmentStatus: "fulfilled",
+        createdAt: {
+          gte: monthStart,
+        },
+      },
+    });
+
+    const totalAmount = result._sum.totalAmount;
+    return totalAmount ? parseFloat(totalAmount.toString()) : 0;
+  } catch (error) {
+    console.error("❌ Error calculating month revenue:", error);
+    return 0;
+  }
+}
+
+/**
+ * Calculate year revenue from database orders
+ */
+async function calculateYearRevenueFromDB(): Promise<number> {
+  try {
+    const yearStart = new Date(new Date().getFullYear(), 0, 1);
+
+    const result = await prisma.order.aggregate({
+      _sum: {
+        totalAmount: true,
+      },
+      where: {
+        fulfillmentStatus: "fulfilled",
+        createdAt: {
+          gte: yearStart,
+        },
+      },
+    });
+
+    const totalAmount = result._sum.totalAmount;
+    return totalAmount ? parseFloat(totalAmount.toString()) : 0;
+  } catch (error) {
+    console.error("❌ Error calculating year revenue:", error);
+    return 0;
+  }
+}
+
+/**
+ * Calculate top spenders from database for a specific period
+ */
+async function calculateTopSpendersFromDB(
+  startDate: Date,
+  endDate: Date,
+  period: string,
+): Promise<CustomerSpender[]> {
+  try {
+    console.log(`🏆 Calculating ${period} top spenders from database...`);
+
+    // Get orders for the period with customer data
+    const orders = await prisma.order.findMany({
+      where: {
+        fulfillmentStatus: "fulfilled",
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+        customerId: {
+          not: null,
+        },
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            shopifyId: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            totalSpend: true,
+            totalPoints: true,
+            numberOfOrders: true,
+            tags: true,
+          },
+        },
+      },
+    });
+
+    // Aggregate spending by customer
+    const customerTotals = new Map<string, CustomerSpender>();
+
+    for (const order of orders) {
+      if (!order.customer) continue;
+
+      const customerId = order.customer.id;
+      const orderAmount = parseFloat(order.totalAmount?.toString() || "0");
+
+      const existing = customerTotals.get(customerId) || {
+        id: `gid://shopify/Customer/${order.customer.shopifyId}`,
+        firstName: order.customer.firstName || "",
+        lastName: order.customer.lastName || "",
+        name:
+          `${order.customer.firstName || ""} ${order.customer.lastName || ""}`.trim() ||
+          "Unknown",
+        amountSpent: {
+          amount: (order.customer.totalSpend || "0").toString(),
+        },
+        numberOfOrders: order.customer.numberOfOrders || 0,
+        tags: order.customer.tags ? order.customer.tags.split(",") : [],
+        tier: "Featherweight", // Will be calculated below
+        periodSpending: 0,
+      };
+
+      existing.periodSpending += orderAmount;
+      customerTotals.set(customerId, existing);
+    }
+
+    // Calculate tiers and sort by period spending
+    const customers = Array.from(customerTotals.values());
+
+    for (const customer of customers) {
+      try {
+        const shopifyId = parseInt(
+          customer.id.replace("gid://shopify/Customer/", ""),
+        );
+        const dbCustomer = await prisma.customer.findUnique({
+          where: { shopifyId },
+          select: { totalPoints: true },
+        });
+
+        if (dbCustomer) {
+          customer.tier = await getCustomerTier(dbCustomer.totalPoints || 0);
+        }
+      } catch (error) {
+        console.warn(`Failed to get tier for customer ${customer.id}:`, error);
+      }
+    }
+
+    const sortedCustomers = customers.sort(
+      (a, b) => b.periodSpending - a.periodSpending,
+    );
+
+    console.log(
+      `✅ ${period} top spenders calculated: ${sortedCustomers.length} customers`,
+    );
+
+    return sortedCustomers;
+  } catch (error) {
+    console.error(`❌ Error calculating ${period} top spenders:`, error);
+    return [];
+  }
+}
+
+/**
+ * Calculate real customer growth from database
+ */
+async function calculateCustomerGrowth(): Promise<number> {
+  try {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(thisMonthStart.getTime() - 1);
+
+    const [thisMonthCustomers, lastMonthCustomers] = await Promise.all([
+      prisma.customer.count({
+        where: {
+          createdAt: {
+            gte: thisMonthStart,
+          },
+        },
+      }),
+      prisma.customer.count({
+        where: {
+          createdAt: {
+            gte: lastMonthStart,
+            lte: lastMonthEnd,
+          },
+        },
+      }),
+    ]);
+
+    if (lastMonthCustomers === 0) return 0;
+    return (
+      ((thisMonthCustomers - lastMonthCustomers) / lastMonthCustomers) * 100
+    );
+  } catch (error) {
+    console.error("❌ Error calculating customer growth:", error);
+    return 0;
+  }
+}
+
+/**
+ * Calculate real spending growth from database
+ */
+async function calculateSpendingGrowth(
+  currentMonthSpending: number,
+): Promise<number> {
+  try {
+    const now = new Date();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    const result = await prisma.order.aggregate({
+      _sum: {
+        totalAmount: true,
+      },
+      where: {
+        fulfillmentStatus: "fulfilled",
+        createdAt: {
+          gte: lastMonthStart,
+          lte: lastMonthEnd,
+        },
+      },
+    });
+
+    const lastMonthSpending = result._sum.totalAmount
+      ? parseFloat(result._sum.totalAmount.toString())
+      : 0;
+
+    if (lastMonthSpending === 0) return 0;
+    return (
+      ((currentMonthSpending - lastMonthSpending) / lastMonthSpending) * 100
+    );
+  } catch (error) {
+    console.error("❌ Error calculating spending growth:", error);
+    return 0;
+  }
 }
