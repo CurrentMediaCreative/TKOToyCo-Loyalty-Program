@@ -13,28 +13,54 @@ import {
 } from "@shopify/polaris";
 import { XIcon, StarIcon, ExternalIcon } from "@shopify/polaris-icons";
 
-interface CustomerLoyaltyCardProps {
-  customer: {
-    id: string;
-    name: string;
-    tier: string;
-    spent?: string;
-    orders: number;
-    // Points-related props
-    spendPoints?: number;
-    bonusPoints?: number;
-    totalPoints?: number;
-    // Additional props that will be passed when available
-    email?: string;
-    phone?: string;
-    lastOrderDate?: string;
-    firstOrderDate?: string;
-    monthlySpend?: number;
-    yearlySpend?: number;
-    totalSpend?: number;
-    spentAmount?: number; // Raw numeric amount
-    consistency?: number; // 0-100 score based on order frequency
+// Unified interface for customer data - works with both dashboard and customer page
+interface CustomerData {
+  // Core identification
+  id: string; // Shopify GID format: gid://shopify/Customer/123456
+  shopifyId?: string | number; // Raw Shopify ID: 123456
+  name: string;
+  firstName?: string;
+  lastName?: string;
+
+  // Contact information
+  email?: string;
+  phone?: string;
+
+  // Spending and orders
+  totalSpend?: number; // Raw number from database
+  spent?: string; // Formatted string like "$1,234.56"
+  spentAmount?: number; // Raw number
+  numberOfOrders?: number;
+  orders?: number; // Alternative field name
+
+  // Points system - use database values ONLY
+  spendPoints?: number; // From database
+  bonusPoints?: number; // From database
+  totalPoints?: number; // From database
+
+  // Tier information
+  tier: string;
+
+  // Dates
+  lastOrderDate?: string;
+  firstOrderDate?: string;
+  createdAt?: string;
+
+  // Additional data
+  tags?: string[];
+  consistency?: number; // 0-100 score
+
+  // Period-specific data (for dashboard leaderboards)
+  periodSpending?: number;
+
+  // Legacy support
+  amountSpent?: {
+    amount: string;
   };
+}
+
+interface CustomerLoyaltyCardProps {
+  customer: CustomerData;
   onClose: () => void;
   onCrownReigningChampion?: (customerId: string) => void;
 }
@@ -43,93 +69,186 @@ export function CustomerLoyaltyCard({
   customer,
   onClose,
 }: CustomerLoyaltyCardProps) {
-  // Calculate loyalty level based on consistency and spending
-  const getLoyaltyLevel = useCallback(() => {
-    // If we don't have consistency data, use a placeholder based on tier
-    if (!customer.consistency) {
-      switch (customer.tier) {
-        case "Reigning Champion":
-          return "The Undisputed";
-        case "Heavyweight":
-          return "The Knockout King";
-        case "Welterweight":
-          return "The Contender";
-        case "Lightweight":
-          return "The Prospect";
-        case "Featherweight":
-          return "The Rookie";
-        default:
-          return "The Challenger";
+  // Extract Shopify ID from various possible formats
+  const getShopifyId = useCallback((): string => {
+    // Try shopifyId field first
+    if (customer.shopifyId) {
+      return customer.shopifyId.toString();
+    }
+
+    // Extract from GID format: gid://shopify/Customer/123456
+    if (customer.id && customer.id.includes("gid://shopify/Customer/")) {
+      return customer.id.replace("gid://shopify/Customer/", "");
+    }
+
+    // Fallback to ID as-is
+    return customer.id || "unknown";
+  }, [customer]);
+
+  // Get customer name with proper fallbacks
+  const getCustomerName = useCallback((): string => {
+    if (customer.name && customer.name !== "Unknown") {
+      return customer.name;
+    }
+
+    const firstName = customer.firstName || "";
+    const lastName = customer.lastName || "";
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    return fullName || "Unknown Customer";
+  }, [customer]);
+
+  // Get total spending amount with proper fallbacks and validation
+  const getTotalSpending = useCallback((): {
+    amount: number;
+    formatted: string;
+  } => {
+    let amount = 0;
+
+    // Priority order for spending data
+    if (customer.totalSpend && customer.totalSpend > 0) {
+      amount = customer.totalSpend;
+    } else if (customer.spentAmount && customer.spentAmount > 0) {
+      amount = customer.spentAmount;
+    } else if (customer.spent) {
+      // Parse formatted string like "$1,234.56"
+      const parsed = parseFloat(customer.spent.replace(/[$,]/g, ""));
+      if (!isNaN(parsed) && parsed > 0) {
+        amount = parsed;
+      }
+    } else if (customer.amountSpent?.amount) {
+      const parsed = parseFloat(customer.amountSpent.amount);
+      if (!isNaN(parsed) && parsed > 0) {
+        amount = parsed;
       }
     }
 
-    // When we have real consistency data, use more specific nicknames
-    if (customer.consistency >= 90) return "The Undisputed";
-    if (customer.consistency >= 80) return "The Knockout King";
-    if (customer.consistency >= 70) return "The Champion";
-    if (customer.consistency >= 60) return "The Contender";
-    if (customer.consistency >= 50) return "The Prospect";
-    if (customer.consistency >= 40) return "The Challenger";
-    if (customer.consistency >= 30) return "The Slugger";
-    if (customer.consistency >= 20) return "The Underdog";
-    return "The Rookie";
+    return {
+      amount,
+      formatted: `$${amount.toFixed(2)}`,
+    };
   }, [customer]);
 
-  // Get tier color
+  // Get order count with fallbacks
+  const getOrderCount = useCallback((): number => {
+    return customer.numberOfOrders || customer.orders || 0;
+  }, [customer]);
+
+  // Get points data with validation - CRITICAL: Use database values only
+  const getPointsData = useCallback(() => {
+    const spendPoints = customer.spendPoints || 0;
+    const bonusPoints = customer.bonusPoints || 0;
+    const totalPoints = customer.totalPoints || spendPoints + bonusPoints;
+
+    // VALIDATION: Check for data integrity issues
+    const spending = getTotalSpending().amount;
+    const expectedSpendPoints = Math.floor(spending); // 1 point per dollar
+
+    // Log warning if points don't match spending (indicates data corruption)
+    if (spendPoints > 0 && Math.abs(spendPoints - expectedSpendPoints) > 100) {
+      console.warn(`⚠️ Points mismatch for ${getCustomerName()}:`, {
+        spendPoints,
+        expectedSpendPoints,
+        actualSpending: spending,
+        difference: spendPoints - expectedSpendPoints,
+      });
+    }
+
+    return {
+      spendPoints,
+      bonusPoints,
+      totalPoints,
+      isValid: Math.abs(spendPoints - expectedSpendPoints) <= 100,
+    };
+  }, [customer, getTotalSpending, getCustomerName]);
+
+  // Calculate average monthly spend with realistic estimation
+  const getAverageMonthlySpend = useCallback((): string => {
+    const { amount: totalSpent } = getTotalSpending();
+    const orderCount = getOrderCount();
+
+    if (totalSpent === 0) return "0.00";
+
+    // Estimate active months based on order frequency
+    // Assume minimum 1 month, maximum 24 months
+    // More orders = longer customer relationship
+    const estimatedMonths = Math.min(
+      24,
+      Math.max(1, Math.ceil(orderCount / 2)),
+    );
+    const monthlyAverage = totalSpent / estimatedMonths;
+
+    return monthlyAverage.toFixed(2);
+  }, [getTotalSpending, getOrderCount]);
+
+  // Get loyalty level nickname based on tier and consistency
+  const getLoyaltyLevel = useCallback((): string => {
+    const tier = customer.tier || "Featherweight";
+    const consistency = customer.consistency;
+
+    // If we have consistency data, use more specific nicknames
+    if (consistency !== undefined) {
+      if (consistency >= 90) return "The Undisputed";
+      if (consistency >= 80) return "The Knockout King";
+      if (consistency >= 70) return "The Champion";
+      if (consistency >= 60) return "The Contender";
+      if (consistency >= 50) return "The Prospect";
+      if (consistency >= 40) return "The Challenger";
+      if (consistency >= 30) return "The Slugger";
+      if (consistency >= 20) return "The Underdog";
+      return "The Rookie";
+    }
+
+    // Default nicknames based on tier
+    switch (tier) {
+      case "Reigning Champion":
+        return "The Undisputed";
+      case "Heavyweight":
+        return "The Knockout King";
+      case "Welterweight":
+        return "The Contender";
+      case "Lightweight":
+        return "The Prospect";
+      case "Featherweight":
+        return "The Rookie";
+      default:
+        return "The Challenger";
+    }
+  }, [customer]);
+
+  // Get tier color for badge
   const getTierColor = useCallback((tier: string) => {
     switch (tier) {
       case "Reigning Champion":
         return "success";
       case "Heavyweight":
-        return "info";
+        return "critical";
       case "Welterweight":
         return "warning";
       case "Lightweight":
-        return "attention";
+        return "info";
       case "Featherweight":
-        return "new";
+        return "subdued";
       default:
-        return "new";
+        return "subdued";
     }
   }, []);
 
-  // Calculate average monthly spend - use database field or reasonable calculation
-  const getAverageMonthlySpend = useCallback(() => {
-    if (customer.monthlySpend) return customer.monthlySpend.toFixed(2);
+  // Build correct Shopify admin URL
+  const getShopifyAdminUrl = useCallback((): string => {
+    const shopifyId = getShopifyId();
+    // Use the correct format: https://admin.shopify.com/store/STORE_ID/customers/CUSTOMER_ID
+    return `https://admin.shopify.com/store/82cc2c/customers/${shopifyId}`;
+  }, [getShopifyId]);
 
-    // Safe parsing of spent amount with fallback
-    let totalSpent = 0;
-    if (customer.spent) {
-      if (typeof customer.spent === "string") {
-        totalSpent = parseFloat(
-          customer.spent.replace("$", "").replace(",", ""),
-        );
-      } else if (typeof customer.spent === "number") {
-        totalSpent = customer.spent;
-      }
-    } else if (customer.spentAmount) {
-      totalSpent = customer.spentAmount;
-    } else if (customer.totalSpend) {
-      totalSpent = customer.totalSpend;
-    }
-
-    // If we have no spending data, return 0
-    if (totalSpent === 0) return "0.00";
-
-    // Use a more reasonable estimate: assume customer has been active for at least 1 month
-    // and at most 24 months (2 years), with orders spread reasonably
-    const minMonths = 1;
-    const maxMonths = 24;
-    const estimatedMonths = Math.min(
-      maxMonths,
-      Math.max(minMonths, customer.orders || 1),
-    );
-
-    return (totalSpent / estimatedMonths).toFixed(2);
-  }, [customer]);
-
-  const loyaltyLevel = getLoyaltyLevel();
+  // Get computed values
+  const customerName = getCustomerName();
+  const { amount: totalSpent, formatted: formattedSpent } = getTotalSpending();
+  const orderCount = getOrderCount();
+  const { spendPoints, bonusPoints, totalPoints, isValid } = getPointsData();
   const avgMonthlySpend = getAverageMonthlySpend();
+  const loyaltyLevel = getLoyaltyLevel();
+  const shopifyAdminUrl = getShopifyAdminUrl();
 
   return (
     <Modal
@@ -142,7 +261,7 @@ export function CustomerLoyaltyCard({
         <BlockStack gap="400">
           <InlineStack align="space-between">
             <Text variant="headingLg" as="h2">
-              {customer.name}
+              {customerName}
             </Text>
             <Button
               variant="plain"
@@ -161,6 +280,7 @@ export function CustomerLoyaltyCard({
                 <Text variant="headingMd" as="h3" fontWeight="semibold">
                   "{loyaltyLevel}"
                 </Text>
+                {!isValid && <Badge tone="critical">Data Issue</Badge>}
               </InlineStack>
 
               <Divider />
@@ -172,10 +292,7 @@ export function CustomerLoyaltyCard({
                       Total Spent
                     </Text>
                     <Text variant="headingMd" as="p">
-                      {customer.spent ||
-                        (customer.spentAmount
-                          ? `$${customer.spentAmount.toFixed(2)}`
-                          : "$0.00")}
+                      {formattedSpent}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
@@ -185,7 +302,7 @@ export function CustomerLoyaltyCard({
                       Total Orders
                     </Text>
                     <Text variant="headingMd" as="p">
-                      {customer.orders}
+                      {orderCount}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
@@ -225,10 +342,13 @@ export function CustomerLoyaltyCard({
                       Spend Points
                     </Text>
                     <Text variant="headingMd" as="p">
-                      {customer.spendPoints !== undefined
-                        ? customer.spendPoints.toLocaleString()
-                        : "N/A"}
+                      {spendPoints.toLocaleString()}
                     </Text>
+                    {!isValid && (
+                      <Text variant="bodySm" as="p" tone="critical">
+                        Expected: ~{Math.floor(totalSpent).toLocaleString()}
+                      </Text>
+                    )}
                   </BlockStack>
                 </Grid.Cell>
                 <Grid.Cell columnSpan={{ xs: 4, sm: 4, md: 4, lg: 4, xl: 4 }}>
@@ -237,9 +357,7 @@ export function CustomerLoyaltyCard({
                       Bonus Points
                     </Text>
                     <Text variant="headingMd" as="p">
-                      {customer.bonusPoints !== undefined
-                        ? customer.bonusPoints.toLocaleString()
-                        : "0"}
+                      {bonusPoints.toLocaleString()}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
@@ -249,14 +367,7 @@ export function CustomerLoyaltyCard({
                       Total Points
                     </Text>
                     <Text variant="headingMd" as="p" fontWeight="bold">
-                      {customer.totalPoints !== undefined
-                        ? customer.totalPoints.toLocaleString()
-                        : customer.spendPoints !== undefined &&
-                            customer.bonusPoints !== undefined
-                          ? (
-                              customer.spendPoints + customer.bonusPoints
-                            ).toLocaleString()
-                          : "N/A"}
+                      {totalPoints.toLocaleString()}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
@@ -297,8 +408,7 @@ export function CustomerLoyaltyCard({
                     icon={<Icon source={StarIcon} />}
                     onClick={() => {
                       // This would trigger the Crown Reigning Champion functionality
-                      // For now, we'll show an alert
-                      alert(`Crown ${customer.name} as Reigning Champion?`);
+                      alert(`Crown ${customerName} as Reigning Champion?`);
                     }}
                   >
                     Crown Reigning Champion
@@ -307,7 +417,7 @@ export function CustomerLoyaltyCard({
                 <Button
                   variant="primary"
                   icon={<Icon source={ExternalIcon} />}
-                  url={`https://admin.shopify.com/store/82cc2c/customers/${customer.id}`}
+                  url={shopifyAdminUrl}
                   target="_blank"
                 >
                   View in Shopify Admin
