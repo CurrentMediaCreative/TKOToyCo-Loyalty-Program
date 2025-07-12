@@ -45,6 +45,15 @@ interface CustomerSpender {
   tags: string[];
   tier: string;
   periodSpending: number; // Spending for the specific period (daily/monthly)
+  // Database fields for loyalty card
+  spendPoints?: number;
+  bonusPoints?: number;
+  totalPoints?: number;
+  totalSpend?: number;
+  email?: string;
+  phone?: string;
+  lastOrderDate?: string;
+  firstOrderDate?: string;
 }
 
 /**
@@ -347,7 +356,11 @@ async function calculateTopSpendersFromDB(
             email: true,
             totalSpend: true,
             totalPoints: true,
+            spendPoints: true,
+            bonusPoints: true,
             numberOfOrders: true,
+            lastOrderDate: true,
+            createdAt: true,
             tags: true,
           },
         },
@@ -377,6 +390,16 @@ async function calculateTopSpendersFromDB(
         tags: order.customer.tags ? order.customer.tags.split(",") : [],
         tier: "Featherweight", // Will be calculated below
         periodSpending: 0,
+        // Database fields for CustomerLoyaltyCard - use actual values
+        spendPoints: order.customer.spendPoints || 0,
+        bonusPoints: order.customer.bonusPoints || 0,
+        totalPoints: order.customer.totalPoints || 0,
+        totalSpend: parseFloat(order.customer.totalSpend?.toString() || "0"),
+        email: order.customer.email || undefined,
+        lastOrderDate: order.customer.lastOrderDate
+          ?.toISOString()
+          .split("T")[0],
+        firstOrderDate: order.customer.createdAt?.toISOString().split("T")[0],
       };
 
       existing.periodSpending += orderAmount;

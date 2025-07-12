@@ -93,7 +93,7 @@ export function CustomerLoyaltyCard({
     }
   }, []);
 
-  // Calculate average monthly spend (placeholder for now)
+  // Calculate average monthly spend - use database field or reasonable calculation
   const getAverageMonthlySpend = useCallback(() => {
     if (customer.monthlySpend) return customer.monthlySpend.toFixed(2);
 
@@ -109,10 +109,22 @@ export function CustomerLoyaltyCard({
       }
     } else if (customer.spentAmount) {
       totalSpent = customer.spentAmount;
+    } else if (customer.totalSpend) {
+      totalSpent = customer.totalSpend;
     }
 
-    // Assume average of 3 months per order as a rough estimate
-    const estimatedMonths = Math.max(1, customer.orders * 3);
+    // If we have no spending data, return 0
+    if (totalSpent === 0) return "0.00";
+
+    // Use a more reasonable estimate: assume customer has been active for at least 1 month
+    // and at most 24 months (2 years), with orders spread reasonably
+    const minMonths = 1;
+    const maxMonths = 24;
+    const estimatedMonths = Math.min(
+      maxMonths,
+      Math.max(minMonths, customer.orders || 1),
+    );
+
     return (totalSpent / estimatedMonths).toFixed(2);
   }, [customer]);
 
@@ -215,15 +227,7 @@ export function CustomerLoyaltyCard({
                     <Text variant="headingMd" as="p">
                       {customer.spendPoints !== undefined
                         ? customer.spendPoints.toLocaleString()
-                        : customer.totalSpend !== undefined
-                          ? customer.totalSpend.toLocaleString()
-                          : customer.spent
-                            ? parseFloat(
-                                customer.spent.replace("$", ""),
-                              ).toLocaleString()
-                            : customer.spentAmount
-                              ? customer.spentAmount.toLocaleString()
-                              : "0"}
+                        : "N/A"}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
@@ -252,13 +256,7 @@ export function CustomerLoyaltyCard({
                           ? (
                               customer.spendPoints + customer.bonusPoints
                             ).toLocaleString()
-                          : customer.spent
-                            ? parseFloat(
-                                customer.spent.replace("$", ""),
-                              ).toLocaleString()
-                            : customer.spentAmount
-                              ? customer.spentAmount.toLocaleString()
-                              : "0"}
+                          : "N/A"}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
