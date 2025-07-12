@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, Link } from "@remix-run/react";
+import { useLoaderData } from "@remix-run/react";
 import { useState, useCallback } from "react";
 import {
   Page,
@@ -244,34 +244,34 @@ export default function Index() {
               </BlockStack>
               <InlineStack gap="300">
                 <Tooltip content="Manage customer profiles and loyalty status">
-                  <Link to="/app/customers">
+                  <a href="/app/customers">
                     <Button
                       variant="primary"
                       icon={<Icon source={PersonIcon} />}
                     >
                       Manage Customers
                     </Button>
-                  </Link>
+                  </a>
                 </Tooltip>
                 <Tooltip content="Configure tier settings and requirements">
-                  <Link to="/app/tiers">
+                  <a href="/app/tiers">
                     <Button
                       variant="secondary"
                       icon={<Icon source={SettingsIcon} />}
                     >
                       Configure Tiers
                     </Button>
-                  </Link>
+                  </a>
                 </Tooltip>
                 <Tooltip content="View detailed analytics and reports">
-                  <Link to="/app/reports">
+                  <a href="/app/reports">
                     <Button
                       variant="tertiary"
                       icon={<Icon source={ChartVerticalIcon} />}
                     >
                       View Reports
                     </Button>
-                  </Link>
+                  </a>
                 </Tooltip>
               </InlineStack>
             </InlineStack>
@@ -487,14 +487,14 @@ export default function Index() {
                           Today's top contenders
                         </Text>
                       </BlockStack>
-                      <Link to="/app/customers">
+                      <a href="/app/customers">
                         <Button
                           variant="plain"
                           icon={<Icon source={ViewIcon} />}
                         >
                           View all fighters
                         </Button>
-                      </Link>
+                      </a>
                     </InlineStack>
                     {todayCompetitorRows.length > 0 ? (
                       <DataTable
@@ -542,14 +542,14 @@ export default function Index() {
                           This month's top contenders
                         </Text>
                       </BlockStack>
-                      <Link to="/app/customers">
+                      <a href="/app/customers">
                         <Button
                           variant="plain"
                           icon={<Icon source={ViewIcon} />}
                         >
                           View all fighters
                         </Button>
-                      </Link>
+                      </a>
                     </InlineStack>
                     {monthCompetitorRows.length > 0 ? (
                       <DataTable

@@ -21,6 +21,11 @@ function Document({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
+        {/* Shopify API Key - Required for App Bridge initialization */}
+        <meta
+          name="shopify-api-key"
+          content="81275bdb1a912d7493a70992a17824bb"
+        />
         <link
           rel="preconnect"
           href="https://cdn.shopify.com/"
