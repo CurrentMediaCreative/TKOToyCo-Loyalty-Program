@@ -12,7 +12,6 @@ import {
   EmptyState,
   Badge,
   IndexTable,
-  useIndexResourceState,
   Tabs,
   Banner,
   InlineStack,
@@ -165,8 +164,48 @@ export default function CustomersPage() {
     plural: "customers",
   };
 
-  const { selectedResources, allResourcesSelected, handleSelectionChange } =
-    useIndexResourceState(customers);
+  // Custom selection state management to fix "select all" toggle issue
+  const [selectedResources, setSelectedResources] = useState<string[]>([]);
+  const [allResourcesSelected, setAllResourcesSelected] = useState(false);
+
+  // Custom selection change handler that matches IndexTable's expected signature
+  const handleSelectionChange = (
+    selectionType: any,
+    toggleType: boolean,
+    selection?: string | any,
+    position?: number,
+  ) => {
+    if (selectionType === "all") {
+      if (toggleType) {
+        // Select all current customers
+        const allIds = currentCustomers.map((customer: any) =>
+          customer.id.replace("gid://shopify/Customer/", ""),
+        );
+        setSelectedResources(allIds);
+        setAllResourcesSelected(true);
+      } else {
+        // Deselect all
+        setSelectedResources([]);
+        setAllResourcesSelected(false);
+      }
+    } else if (selectionType === "single" && typeof selection === "string") {
+      if (toggleType) {
+        setSelectedResources((prev) => [...prev, selection]);
+      } else {
+        setSelectedResources((prev) => prev.filter((id) => id !== selection));
+      }
+      // Update allResourcesSelected based on current selection
+      const allIds = currentCustomers.map((customer: any) =>
+        customer.id.replace("gid://shopify/Customer/", ""),
+      );
+      const newSelectedResources = toggleType
+        ? [...selectedResources, selection]
+        : selectedResources.filter((id) => id !== selection);
+      setAllResourcesSelected(
+        newSelectedResources.length === allIds.length && allIds.length > 0,
+      );
+    }
+  };
 
   const tabs = [
     {

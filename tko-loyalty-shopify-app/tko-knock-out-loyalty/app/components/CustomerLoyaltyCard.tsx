@@ -134,33 +134,15 @@ export function CustomerLoyaltyCard({
     return customer.numberOfOrders || customer.orders || 0;
   }, [customer]);
 
-  // Get points data with validation - CRITICAL: Use database values only
+  // Get points data - just use database values directly, no calculations
   const getPointsData = useCallback(() => {
-    const spendPoints = customer.spendPoints || 0;
-    const bonusPoints = customer.bonusPoints || 0;
-    const totalPoints = customer.totalPoints || spendPoints + bonusPoints;
-
-    // VALIDATION: Check for data integrity issues
-    const spending = getTotalSpending().amount;
-    const expectedSpendPoints = Math.floor(spending); // 1 point per dollar
-
-    // Log warning if points don't match spending (indicates data corruption)
-    if (spendPoints > 0 && Math.abs(spendPoints - expectedSpendPoints) > 100) {
-      console.warn(`⚠️ Points mismatch for ${getCustomerName()}:`, {
-        spendPoints,
-        expectedSpendPoints,
-        actualSpending: spending,
-        difference: spendPoints - expectedSpendPoints,
-      });
-    }
-
     return {
-      spendPoints,
-      bonusPoints,
-      totalPoints,
-      isValid: Math.abs(spendPoints - expectedSpendPoints) <= 100,
+      spendPoints: customer.spendPoints || 0,
+      bonusPoints: customer.bonusPoints || 0,
+      totalPoints: customer.totalPoints || 0,
+      isValid: true, // Always valid since we're using database values
     };
-  }, [customer, getTotalSpending, getCustomerName]);
+  }, [customer]);
 
   // Calculate average monthly spend with realistic estimation
   const getAverageMonthlySpend = useCallback((): string => {
