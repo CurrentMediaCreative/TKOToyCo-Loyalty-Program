@@ -53,3 +53,24 @@ memory-bank/branding/*
 
 # Archive directory (contains legacy code)
 archive/
+
+# Data files (CSV exports, etc.)
+data/
+*.csv
+
+# Temporary analysis scripts
+*-analyzer.js
+*-analyzer.cjs
+csv-*.js
+csv-*.cjs
+test-*.js
+bulk-*.js
+check-*.js
+diagnose-*.js
+analyze-*.js
+inspect-*.js
+investigate-*.js
+verify-*.js
+find-*.js
+fetch-*.js
+fix-*.js

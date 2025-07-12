@@ -85,21 +85,21 @@ model Customer {
 }
 
 model Order {
-  id                String    @id @default(uuid())
-  shopifyId         BigInt    @unique
+  id                String     @id @default(uuid())
+  shopifyId         BigInt     @unique
   customerId        String?
-  customer          Customer? @relation(fields: [customerId], references: [id])
+  customer          Customer?  @relation(fields: [customerId], references: [id])
   
   // Financial data
-  totalAmount       Decimal   @db.Decimal(10, 2)
-  subtotalAmount    Decimal   @db.Decimal(10, 2)
-  taxAmount         Decimal   @db.Decimal(10, 2)
-  shippingAmount    Decimal   @db.Decimal(10, 2)
-  discountAmount    Decimal   @db.Decimal(10, 2)
+  totalAmount       Decimal    @db.Decimal(10, 2)
+  subtotalAmount    Decimal    @db.Decimal(10, 2)
+  taxAmount         Decimal    @db.Decimal(10, 2)
+  shippingAmount    Decimal    @db.Decimal(10, 2)
+  discountAmount    Decimal    @db.Decimal(10, 2)
   
   // Status and fulfillment
-  financialStatus   String    // paid, pending, refunded, etc.
-  fulfillmentStatus String?   // fulfilled, partial, unfulfilled
+  financialStatus   String     // paid, pending, refunded, etc.
+  fulfillmentStatus String?    // fulfilled, partial, unfulfilled
   
   // Dates
   createdAt         DateTime
@@ -117,8 +117,11 @@ model Order {
   note              String?
   
   // Tracking
-  lastSyncAt        DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  lastSyncAt        DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  // Relations
+  lineItems         LineItem[]
 
   @@index([shopifyId])
   @@index([customerId])
@@ -128,6 +131,36 @@ model Order {
   @@index([fulfillmentStatus])
   @@index([totalAmount])
   @@map("Order")
+}
+
+model LineItem {
+  id                String   @id @default(uuid())
+  orderId           String
+  shopifyId         BigInt?
+  name              String
+  price             Decimal  @db.Decimal(10, 2)
+  quantity          Int      @default(1)
+  sku               String?
+  variantId         BigInt?
+  productId         BigInt?
+  variantTitle      String?
+  vendor            String?
+  discount          Decimal? @db.Decimal(10, 2) @default(0)
+  taxable           Boolean  @default(true)
+  requiresShipping  Boolean  @default(true)
+  fulfillmentService String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([shopifyId])
+  @@index([sku])
+  @@index([productId])
+  @@index([variantId])
+  @@map("LineItem")
 }
 
 model PointEvent {

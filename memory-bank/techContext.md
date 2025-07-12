@@ -43,13 +43,43 @@ The TKO Toy Co Loyalty Program is built using a modern, scalable technology stac
 
 ### Integration Technologies
 
-| Technology            | Purpose                | Justification                                    |
-| --------------------- | ---------------------- | ------------------------------------------------ |
-| Shopify API           | E-commerce integration | Official API for Shopify store data access       |
-| REST APIs             | Service communication  | Standard protocol for system integration         |
-| Webhooks              | Event notifications    | Real-time updates from external systems          |
-| SendGrid              | Email service          | Reliable email delivery, templates, tracking     |
-| NFC/Barcode Libraries | Card scanning          | Support for physical membership card integration |
+| Technology            | Purpose                | Justification                                      |
+| --------------------- | ---------------------- | -------------------------------------------------- |
+| Shopify GraphQL API   | E-commerce integration | Official GraphQL API for Shopify store data access |
+| REST APIs             | Service communication  | Standard protocol for system integration           |
+| Webhooks              | Event notifications    | Real-time updates from external systems            |
+| SendGrid              | Email service          | Reliable email delivery, templates, tracking       |
+| NFC/Barcode Libraries | Card scanning          | Support for physical membership card integration   |
+
+## 🚨 CRITICAL SHOPIFY API GUIDELINES 🚨
+
+### MANDATORY: Use GraphQL API Only
+
+- **NEVER use REST API endpoints** - Shopify is phasing out REST API
+- **ALWAYS use GraphQL Admin API** for all Shopify integrations
+- **ALWAYS verify against official GraphQL documentation** at https://shopify.dev/docs/api/admin-graphql/latest/
+
+### GraphQL Field Names (NOT REST API names)
+
+- ✅ **CORRECT**: `amountSpent` (GraphQL field name)
+- ❌ **WRONG**: `total_spent` (REST API field name)
+- ✅ **CORRECT**: `numberOfOrders` (GraphQL field name)
+- ❌ **WRONG**: `orders_count` (REST API field name)
+
+### GraphQL Sort Keys vs Field Names
+
+- **Sort Key**: `TOTAL_SPENT` (enum value for sorting)
+- **Field Name**: `amountSpent` (actual field to access data)
+- **Example**: `sortKey: TOTAL_SPENT` but access data via `node.amountSpent.amount`
+
+### Required Documentation Verification
+
+Before implementing ANY Shopify integration:
+
+1. Check https://shopify.dev/docs/api/admin-graphql/latest/queries/[endpoint]
+2. Verify field names match GraphQL schema exactly
+3. Test queries against actual store data
+4. Never assume REST API patterns apply to GraphQL
 
 ### DevOps & Infrastructure
 
