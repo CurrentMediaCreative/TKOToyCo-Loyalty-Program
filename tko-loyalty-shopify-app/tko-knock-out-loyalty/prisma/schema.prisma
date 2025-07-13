@@ -60,6 +60,7 @@ model Customer {
   tierId        String?
   metafieldId   String?            @unique
   lastOrderDate DateTime?
+  shopifyCreatedAt DateTime?        // When customer actually joined Shopify
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   spendPoints   Float              @default(0)

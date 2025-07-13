@@ -20,6 +20,7 @@ type CustomerWithPoints = {
   metafieldId: string | null;
   lastOrderDate: Date | null;
   createdAt: Date;
+  shopifyCreatedAt?: Date | null;
   updatedAt: Date;
 };
 

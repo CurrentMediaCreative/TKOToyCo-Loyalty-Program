@@ -1,6 +1,7 @@
 import "@shopify/shopify-app-remix/adapters/node";
-import { ApiVersion, shopifyApp } from "@shopify/shopify-app-remix/server";
+import { shopifyApp, DeliveryMethod } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
+import type { Session } from "@shopify/shopify-api";
 import prisma from "./db.server";
 
 // Ensure we have a valid URL with protocol for Shopify API
@@ -33,7 +34,7 @@ const getAppUrl = () => {
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
-  apiVersion: ApiVersion.January25,
+  apiVersion: "2025-07",
   scopes: process.env.SCOPES?.split(","),
   appUrl: getAppUrl(),
   authPathPrefix: "/auth",
@@ -53,13 +54,34 @@ const shopify = shopifyApp({
     v3_authenticatePublic: true, // Enable v3 authentication for public requests
     v3_optInToPartialSessions: true, // Opt into partial sessions for better cookie handling
   },
+  // Webhook configuration - register webhooks for order events
+  webhooks: {
+    ORDERS_CREATED: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/orders/create",
+    },
+    ORDERS_FULFILLED: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/orders/fulfilled",
+    },
+    APP_UNINSTALLED: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/app/uninstalled",
+    },
+  },
+  // Register webhooks after authentication
+  hooks: {
+    afterAuth: async ({ session }: { session: Session }) => {
+      shopify.registerWebhooks({ session });
+    },
+  },
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
 });
 
 export default shopify;
-export const apiVersion = ApiVersion.January25;
+export const apiVersion = "2025-07";
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
 export const unauthenticated = shopify.unauthenticated;

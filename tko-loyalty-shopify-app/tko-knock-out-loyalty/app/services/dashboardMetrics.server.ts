@@ -95,6 +95,7 @@ export async function getDashboardMetrics(
             numberOfOrders: true,
             lastOrderDate: true,
             createdAt: true,
+            shopifyCreatedAt: true,
             tags: true,
             tier: {
               select: { name: true },
@@ -269,7 +270,7 @@ async function calculateTotalRevenueFromDB(): Promise<number> {
 
 /**
  * Calculate month revenue from database orders
- * Uses fulfilledAt for proper revenue recognition - revenue is recognized when fulfilled, not when ordered
+ * Uses createdAt to match Shopify's analytics (order date, not fulfillment date)
  */
 async function calculateMonthRevenueFromDB(monthStart: Date): Promise<number> {
   try {
@@ -279,9 +280,8 @@ async function calculateMonthRevenueFromDB(monthStart: Date): Promise<number> {
       },
       where: {
         fulfillmentStatus: "fulfilled",
-        fulfilledAt: {
+        createdAt: {
           gte: monthStart,
-          not: null, // Ensure fulfilledAt is not null
         },
       },
     });
@@ -443,8 +443,9 @@ async function calculateTopSpendersFromDB(
 }
 
 /**
- * Calculate real customer growth from database
+ * Calculate real customer growth from database using Shopify creation dates
  * Compares current month (1st to current day) vs previous month (1st to same day)
+ * Uses shopifyCreatedAt for accurate customer join dates, falls back to createdAt if null
  */
 async function calculateCustomerGrowth(): Promise<number> {
   try {
@@ -473,26 +474,49 @@ async function calculateCustomerGrowth(): Promise<number> {
     const compareDay = Math.min(currentDay, daysInPrevMonth);
     const lastMonthEnd = new Date(prevYear, adjustedPrevMonth, compareDay + 1);
 
-    console.log(`📊 Customer Growth Comparison:`, {
+    console.log(`📊 Customer Growth Comparison (using Shopify join dates):`, {
       currentPeriod: `${thisMonthStart.toISOString().split("T")[0]} to ${new Date(thisMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
       previousPeriod: `${lastMonthStart.toISOString().split("T")[0]} to ${new Date(lastMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
     });
 
+    // Use shopifyCreatedAt if available, otherwise fall back to createdAt
     const [thisMonthCustomers, lastMonthCustomers] = await Promise.all([
       prisma.customer.count({
         where: {
-          createdAt: {
-            gte: thisMonthStart,
-            lt: thisMonthEnd,
-          },
+          OR: [
+            {
+              shopifyCreatedAt: {
+                gte: thisMonthStart,
+                lt: thisMonthEnd,
+              },
+            },
+            {
+              shopifyCreatedAt: null,
+              createdAt: {
+                gte: thisMonthStart,
+                lt: thisMonthEnd,
+              },
+            },
+          ],
         },
       }),
       prisma.customer.count({
         where: {
-          createdAt: {
-            gte: lastMonthStart,
-            lt: lastMonthEnd,
-          },
+          OR: [
+            {
+              shopifyCreatedAt: {
+                gte: lastMonthStart,
+                lt: lastMonthEnd,
+              },
+            },
+            {
+              shopifyCreatedAt: null,
+              createdAt: {
+                gte: lastMonthStart,
+                lt: lastMonthEnd,
+              },
+            },
+          ],
         },
       }),
     ]);

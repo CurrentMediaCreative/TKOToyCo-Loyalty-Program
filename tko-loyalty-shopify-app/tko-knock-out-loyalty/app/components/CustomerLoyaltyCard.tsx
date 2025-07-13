@@ -45,6 +45,7 @@ interface CustomerData {
   lastOrderDate?: string;
   firstOrderDate?: string;
   createdAt?: string;
+  shopifyCreatedAt?: string;
 
   // Additional data
   tags?: string[];
@@ -381,6 +382,16 @@ export function CustomerLoyaltyCard({
                     First Order: {customer.firstOrderDate}
                   </Text>
                 )}
+                <Text variant="bodyMd" as="p">
+                  <strong>Customer Since:</strong>{" "}
+                  {customer.shopifyCreatedAt
+                    ? new Date(customer.shopifyCreatedAt).toLocaleDateString()
+                    : customer.firstOrderDate
+                      ? new Date(customer.firstOrderDate).toLocaleDateString()
+                      : customer.createdAt
+                        ? new Date(customer.createdAt).toLocaleDateString()
+                        : "Unknown"}
+                </Text>
               </BlockStack>
 
               <InlineStack align="end" gap="200">
