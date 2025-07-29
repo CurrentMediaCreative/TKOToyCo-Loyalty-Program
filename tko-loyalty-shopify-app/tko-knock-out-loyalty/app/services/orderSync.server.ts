@@ -357,7 +357,7 @@ export class OrderSyncService {
                           amount
                         }
                       }
-                      financialStatus
+                      displayFinancialStatus
                       fulfillmentStatus
                       processedAt
                       tags
@@ -584,7 +584,7 @@ export class OrderSyncService {
       taxes_included: false, // Not available in GraphQL
       currency: "CAD", // Assuming CAD
       financial_status:
-        graphqlOrder.financialStatus?.toLowerCase() || "pending",
+        graphqlOrder.displayFinancialStatus?.toLowerCase() || "pending",
       confirmed: true,
       total_discounts: graphqlOrder.totalDiscountsSet?.shopMoney?.amount || "0",
       buyer_accepts_marketing: false, // Not available in GraphQL
