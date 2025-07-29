@@ -336,7 +336,6 @@ export class OrderSyncService {
                       updatedAt
                       number
                       note
-                      test
                       totalPriceSet {
                         shopMoney {
                           amount
@@ -357,9 +356,12 @@ export class OrderSyncService {
                           amount
                         }
                       }
-      displayFinancialStatus
-      displayFulfillmentStatus
-      processedAt
+                      displayFinancialStatus
+                      displayFulfillmentStatus
+                      processedAt
+                      sourceUrl
+                      referringSite
+                      landingSite
                       tags
                       customer {
                         id
@@ -589,8 +591,8 @@ export class OrderSyncService {
       total_discounts: graphqlOrder.totalDiscountsSet?.shopMoney?.amount || "0",
       buyer_accepts_marketing: false, // Not available in GraphQL
       name: graphqlOrder.name,
-      referring_site: "",
-      landing_site: "",
+      referring_site: graphqlOrder.referringSite || "",
+      landing_site: graphqlOrder.landingSite || "",
       cancelled_at: undefined,
       cancel_reason: undefined,
       total_price_usd: undefined,
@@ -599,7 +601,7 @@ export class OrderSyncService {
       user_id: undefined,
       location_id: undefined,
       source_identifier: undefined,
-      source_url: "",
+      source_url: graphqlOrder.sourceUrl || "",
       processed_at: graphqlOrder.processedAt,
       device_id: undefined,
       phone: undefined,
