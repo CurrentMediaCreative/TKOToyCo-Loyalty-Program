@@ -301,7 +301,6 @@ export class OrderSyncService {
                             }
                             taxable
                             requiresShipping
-                            fulfillmentService
                           }
                         }
                       }
@@ -491,7 +490,7 @@ export class OrderSyncService {
       user_id: undefined,
       location_id: undefined,
       source_identifier: undefined,
-      source_url: graphqlOrder.sourceUrl || "",
+      source_url: "",
       processed_at: graphqlOrder.processedAt,
       device_id: undefined,
       phone: undefined,
