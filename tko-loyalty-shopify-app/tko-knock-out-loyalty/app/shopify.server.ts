@@ -6,15 +6,16 @@ import prisma from "./db.server";
 
 // Ensure we have a valid URL with protocol for Shopify API
 const getAppUrl = () => {
+  const url = process.env.SHOPIFY_APP_URL;
+
+  // Fail fast if URL is missing
+  if (!url || url.trim() === "") {
+    throw new Error(
+      "SHOPIFY_APP_URL environment variable is required and cannot be empty",
+    );
+  }
+
   try {
-    const url = process.env.SHOPIFY_APP_URL || "";
-
-    // Handle empty URL case
-    if (!url || url.trim() === "") {
-      console.warn("SHOPIFY_APP_URL is empty, using localhost fallback");
-      return "http://localhost:3000";
-    }
-
     // If no protocol, add https://
     let formattedUrl = url;
     if (!url.includes("://")) {
@@ -23,17 +24,34 @@ const getAppUrl = () => {
 
     // Validate URL by attempting to construct a URL object
     new URL(formattedUrl);
-    return formattedUrl; // Return the full URL with protocol
+    console.log(`✅ Using app URL: ${formattedUrl}`);
+    return formattedUrl;
   } catch (error) {
-    console.error("Invalid SHOPIFY_APP_URL:", error);
-    // Fallback to a safe default for local development
-    return "http://localhost:3000";
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Invalid SHOPIFY_APP_URL format: ${url}. Error: ${errorMessage}`,
+    );
   }
 };
 
+// Validate required environment variables
+const validateEnvVars = () => {
+  const required = ["SHOPIFY_API_KEY", "SHOPIFY_API_SECRET", "SCOPES"];
+  const missing = required.filter((key) => !process.env[key]);
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(", ")}`,
+    );
+  }
+};
+
+// Validate environment on startup
+validateEnvVars();
+
 const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
+  apiKey: process.env.SHOPIFY_API_KEY!,
+  apiSecretKey: process.env.SHOPIFY_API_SECRET!,
   apiVersion: "2025-07",
   scopes: process.env.SCOPES?.split(","),
   appUrl: getAppUrl(),

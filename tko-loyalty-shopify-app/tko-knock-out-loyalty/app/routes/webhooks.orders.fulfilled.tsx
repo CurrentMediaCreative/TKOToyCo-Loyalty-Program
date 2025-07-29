@@ -11,7 +11,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     // Step 1: Test basic webhook authentication
     console.log("🔐 Testing basic webhook authentication...");
-    const { shop, topic, admin, payload } = await authenticate.webhook(request);
+    const { shop, topic, payload } = await authenticate.webhook(request);
     console.log(
       `✅ Authentication successful - Shop: ${shop}, Topic: ${topic}`,
     );
