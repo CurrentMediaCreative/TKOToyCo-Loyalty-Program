@@ -249,8 +249,6 @@ export class OrderSyncService {
                       displayFinancialStatus
                       displayFulfillmentStatus
                       processedAt
-                      referringSite
-                      landingSite
                       tags
                       customer {
                         id
@@ -483,8 +481,8 @@ export class OrderSyncService {
       total_discounts: graphqlOrder.totalDiscountsSet?.shopMoney?.amount || "0",
       buyer_accepts_marketing: false, // Not available in GraphQL
       name: graphqlOrder.name,
-      referring_site: graphqlOrder.referringSite || "",
-      landing_site: graphqlOrder.landingSite || "",
+      referring_site: "",
+      landing_site: "",
       cancelled_at: undefined,
       cancel_reason: undefined,
       total_price_usd: undefined,
