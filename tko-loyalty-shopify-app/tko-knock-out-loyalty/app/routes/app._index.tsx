@@ -1,6 +1,6 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useActionData, Form } from "@remix-run/react";
 import { useState, useCallback } from "react";
 import {
   Page,
@@ -19,6 +19,7 @@ import {
   Divider,
   ProgressBar,
   Tooltip,
+  Banner,
 } from "@shopify/polaris";
 import {
   ViewIcon,
@@ -29,11 +30,13 @@ import {
   ArrowUpIcon,
   ArrowDownIcon,
   StarIcon,
+  RefreshIcon,
 } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 import { serializeBigInt } from "../utils/serialization";
 import { getDashboardMetrics } from "../services/dashboardMetrics.server";
+import { syncMissingOrders } from "../services/orderSync.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -76,9 +79,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 };
 
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { admin } = await authenticate.admin(request);
+
+  try {
+    console.log("🔄 Starting manual order sync...");
+    const syncResult = await syncMissingOrders(admin);
+
+    return json({
+      success: true,
+      message: `Sync completed! Processed ${syncResult.processedOrders} orders, awarded ${syncResult.pointsAwarded} points.`,
+      syncResult,
+    });
+  } catch (error) {
+    console.error("❌ Manual sync failed:", error);
+    return json(
+      {
+        success: false,
+        message: error instanceof Error ? error.message : "Sync failed",
+      },
+      { status: 500 },
+    );
+  }
+};
+
 export default function Index() {
   const { stats, tierCounts, todayCompetitors, monthCompetitors, error } =
     useLoaderData<typeof loader>() as any;
+  const actionData = useActionData<typeof action>();
 
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [spendingFilter, setSpendingFilter] = useState<
@@ -243,6 +271,18 @@ export default function Index() {
                 </Text>
               </BlockStack>
               <InlineStack gap="300">
+                <Form method="post">
+                  <Tooltip content="Sync missing orders from Shopify store">
+                    <Button
+                      submit
+                      variant="secondary"
+                      icon={<Icon source={RefreshIcon} />}
+                      tone={actionData?.success ? "success" : undefined}
+                    >
+                      Sync With Store
+                    </Button>
+                  </Tooltip>
+                </Form>
                 <Tooltip content="Manage customer profiles and loyalty status">
                   <a href="/app/customers">
                     <Button
@@ -278,6 +318,17 @@ export default function Index() {
             <Divider />
           </BlockStack>
         </Box>
+
+        {/* Sync Result Banner */}
+        {actionData && (
+          <Banner
+            title={actionData.success ? "Sync Successful" : "Sync Failed"}
+            tone={actionData.success ? "success" : "critical"}
+            onDismiss={() => {}}
+          >
+            <p>{actionData.message}</p>
+          </Banner>
+        )}
 
         {/* Stats Cards */}
         <Layout>
