@@ -33,6 +33,10 @@ interface OrderLineItem {
   vendor?: string;
   product_type?: string;
   tags?: string;
+  sku?: string;
+  taxable?: boolean;
+  requires_shipping?: boolean;
+  fulfillment_service?: string;
 }
 
 interface ShopifyOrder {

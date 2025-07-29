@@ -308,11 +308,6 @@ export class OrderSyncService {
                         edges {
                           node {
                             title
-                            priceSet {
-                              shopMoney {
-                                amount
-                              }
-                            }
                           }
                         }
                       }
@@ -490,7 +485,7 @@ export class OrderSyncService {
       user_id: undefined,
       location_id: undefined,
       source_identifier: undefined,
-      source_url: "",
+      source_url: "", // Set to empty string instead of trying to fetch
       processed_at: graphqlOrder.processedAt,
       device_id: undefined,
       phone: undefined,
@@ -543,12 +538,12 @@ export class OrderSyncService {
           sku: edge.node.variant?.sku,
           taxable: edge.node.taxable,
           requires_shipping: edge.node.requiresShipping,
-          fulfillment_service: edge.node.fulfillmentService,
+          fulfillment_service: "", // Set to empty string instead of trying to fetch
         })) || [],
       shipping_lines:
         graphqlOrder.shippingLines?.edges?.map((edge: any) => ({
           title: edge.node.title,
-          price: edge.node.priceSet?.shopMoney?.amount || "0",
+          price: "0",
         })) || [],
       billing_address: null,
       shipping_address: null,
