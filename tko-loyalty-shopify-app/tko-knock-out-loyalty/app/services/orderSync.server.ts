@@ -2,16 +2,7 @@ import prisma from "../db.server";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { createOrUpdateOrder } from "./order.server";
 import { syncCustomerById } from "./customerSync.server";
-import {
-  createOrUpdateCustomer,
-  getCustomerByShopifyId,
-} from "./customer.server";
-import { createBonusPointsTransaction } from "./pointTransaction.server";
-import { calculateBonusPoints } from "./pointEvent.server";
-import {
-  fetchProductCollections,
-  isBinderPOSOrder,
-} from "./collections.server";
+import { processFulfilledOrder } from "./orderProcessor.server";
 
 interface ShopifyOrder {
   id: number;
@@ -123,107 +114,6 @@ interface SyncResult {
  * Handles synchronization of orders from Shopify to local database
  * Focuses on catching up missing orders since last sync
  */
-/**
- * Process a fulfilled order for points calculation
- */
-async function processOrderForPoints(
-  orderData: ShopifyOrder,
-  admin: AdminApiContext,
-) {
-  if (!orderData.customer) {
-    return { pointsAwarded: 0 };
-  }
-
-  const customer = orderData.customer;
-  const orderAmount = parseFloat(orderData.total_price);
-  const orderId = orderData.id.toString();
-
-  console.log(
-    `💰 Processing points for order #${orderData.order_number} ($${orderAmount.toFixed(2)})`,
-  );
-
-  try {
-    // Create or update customer in our database
-    let loyaltyCustomer = await getCustomerByShopifyId(customer.id);
-
-    if (!loyaltyCustomer) {
-      loyaltyCustomer = await createOrUpdateCustomer({
-        shopifyId: customer.id,
-        email: customer.email,
-        firstName: customer.first_name,
-        lastName: customer.last_name,
-        totalSpend: Math.round(parseFloat(customer.total_spent || "0")),
-        lastOrderDate: new Date(orderData.created_at),
-        admin,
-      });
-    }
-
-    // Extract product IDs and fetch their collections
-    const productIds = orderData.line_items.map((item) =>
-      item.product_id.toString(),
-    );
-    let productCollections: Record<string, string[]> = {};
-
-    try {
-      productCollections = await fetchProductCollections(admin, productIds);
-    } catch (error) {
-      console.error("❌ Error fetching product collections:", error);
-    }
-
-    // Prepare line items for bonus calculation
-    const orderLineItems = orderData.line_items.map((item) => ({
-      productId: item.product_id.toString(),
-      price: parseFloat(item.price),
-      quantity: item.quantity,
-      collections: productCollections[item.product_id.toString()] || [],
-    }));
-
-    // Check if this is an in-store order
-    const isInstoreOrder = isBinderPOSOrder(orderData.note || null);
-
-    // Calculate bonus points
-    let bonusPoints = 0;
-    let appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
-
-    if (orderLineItems.length > 0) {
-      try {
-        const bonusResult = await calculateBonusPoints({
-          orderLineItems,
-          isInstoreOrder,
-        });
-
-        bonusPoints = bonusResult.totalBonusPoints;
-        appliedEvents = bonusResult.appliedEvents;
-      } catch (error) {
-        console.error("❌ Error calculating bonus points:", error);
-      }
-    }
-
-    // Create bonus point transactions
-    for (const appliedEvent of appliedEvents) {
-      try {
-        await createBonusPointsTransaction({
-          customerId: loyaltyCustomer.id,
-          amount: appliedEvent.pointsAwarded,
-          orderId,
-          eventId: appliedEvent.eventId,
-          description: `Bonus points from event for order #${orderData.order_number}`,
-          admin,
-        });
-      } catch (error) {
-        console.error(`❌ Error creating bonus transaction:`, error);
-      }
-    }
-
-    return { pointsAwarded: bonusPoints };
-  } catch (error) {
-    console.error(
-      `❌ Error processing points for order #${orderData.order_number}:`,
-      error,
-    );
-    return { pointsAwarded: 0 };
-  }
-}
 
 export class OrderSyncService {
   private admin: AdminApiContext;
@@ -359,7 +249,6 @@ export class OrderSyncService {
                       displayFinancialStatus
                       displayFulfillmentStatus
                       processedAt
-                      sourceUrl
                       referringSite
                       landingSite
                       tags
@@ -495,14 +384,17 @@ export class OrderSyncService {
               if (shopifyOrder.fulfillmentStatus === "FULFILLED") {
                 fulfilledOrders++;
                 try {
-                  const pointsResult = await processOrderForPoints(
+                  const pointsResult = await processFulfilledOrder(
                     restOrder,
                     this.admin,
                   );
-                  if (pointsResult.pointsAwarded > 0) {
-                    pointsAwarded += pointsResult.pointsAwarded;
+                  if (
+                    pointsResult.bonusPoints &&
+                    pointsResult.bonusPoints > 0
+                  ) {
+                    pointsAwarded += pointsResult.bonusPoints;
                     console.log(
-                      `💰 Awarded ${pointsResult.pointsAwarded} points for order #${shopifyOrder.number}`,
+                      `💰 Awarded ${pointsResult.bonusPoints} points for order #${shopifyOrder.number}`,
                     );
                   }
                 } catch (pointsError) {
