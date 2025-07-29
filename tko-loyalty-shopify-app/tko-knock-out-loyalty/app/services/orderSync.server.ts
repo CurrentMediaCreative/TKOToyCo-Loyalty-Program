@@ -1,7 +1,6 @@
 import prisma from "../db.server";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { createOrUpdateOrder } from "./order.server";
-import { syncCustomerById } from "./customerSync.server";
 import { processFulfilledOrder } from "./orderProcessor.server";
 
 interface ShopifyOrder {
@@ -354,9 +353,34 @@ export class OrderSyncService {
                   ),
                 );
 
-                // Sync customer data if we haven't already in this batch
+                // Always update customer data with current Shopify data to ensure accuracy
                 if (!processedCustomers.has(customerShopifyId.toString())) {
-                  await syncCustomerById(this.admin, customerShopifyId);
+                  // Use customer data from the order (which is current) to update our database
+                  const totalSpend = parseFloat(
+                    shopifyOrder.customer.amountSpent?.amount || "0",
+                  );
+                  const numberOfOrders =
+                    parseInt(shopifyOrder.customer.numberOfOrders) || 0;
+
+                  console.log(
+                    `🔄 Updating customer ${customerShopifyId} with current Shopify data: $${totalSpend} total spend, ${numberOfOrders} orders`,
+                  );
+
+                  // Import createOrUpdateCustomer to ensure data consistency
+                  const { createOrUpdateCustomer } = await import(
+                    "./customer.server"
+                  );
+
+                  await createOrUpdateCustomer({
+                    shopifyId: customerShopifyId,
+                    email: shopifyOrder.customer.email,
+                    firstName: shopifyOrder.customer.firstName,
+                    lastName: shopifyOrder.customer.lastName,
+                    totalSpend: totalSpend,
+                    lastOrderDate: new Date(shopifyOrder.createdAt),
+                    admin: this.admin,
+                  });
+
                   processedCustomers.add(customerShopifyId.toString());
                   customersUpdated++;
                 }
@@ -563,7 +587,7 @@ export class OrderSyncService {
               graphqlOrder.customer.createdAt,
             first_name: graphqlOrder.customer.firstName,
             last_name: graphqlOrder.customer.lastName,
-            orders_count: graphqlOrder.customer.numberOfOrders || 0,
+            orders_count: parseInt(graphqlOrder.customer.numberOfOrders) || 0,
             state: "enabled",
             total_spent: graphqlOrder.customer.amountSpent?.amount || "0",
             last_order_id: undefined,
