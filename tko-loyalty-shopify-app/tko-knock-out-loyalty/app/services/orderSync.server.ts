@@ -357,9 +357,9 @@ export class OrderSyncService {
                           amount
                         }
                       }
-                      displayFinancialStatus
-                      fulfillmentStatus
-                      processedAt
+      displayFinancialStatus
+      displayFulfillmentStatus
+      processedAt
                       tags
                       customer {
                         id
@@ -615,7 +615,7 @@ export class OrderSyncService {
       processing_method: "",
       checkout_id: undefined,
       source_name: "",
-      fulfillment_status: graphqlOrder.fulfillmentStatus?.toLowerCase(),
+      fulfillment_status: graphqlOrder.displayFulfillmentStatus?.toLowerCase(),
       tax_lines: [],
       tags: graphqlOrder.tags?.join(",") || "",
       contact_email: graphqlOrder.email,
