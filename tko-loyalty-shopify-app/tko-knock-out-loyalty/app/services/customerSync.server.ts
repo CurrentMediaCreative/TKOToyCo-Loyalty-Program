@@ -7,10 +7,8 @@ interface ShopifyCustomer {
   lastName?: string;
   email?: string;
   phone?: string;
-  numberOfOrders: number;
-  amountSpent: {
-    amount: string;
-  };
+  ordersCount: number;
+  totalSpent: string;
   tags: string[];
   createdAt: string;
   lastOrder?: {
@@ -91,10 +89,8 @@ export class CustomerSyncService {
                       lastName
                       email
                       phone
-                      numberOfOrders
-                      amountSpent {
-                        amount
-                      }
+                      ordersCount
+                      totalSpent
                       tags
                       createdAt
                       lastOrder {
@@ -197,7 +193,8 @@ export class CustomerSyncService {
     const shopifyId = parseInt(
       shopifyCustomer.id.replace("gid://shopify/Customer/", ""),
     );
-    const totalSpend = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+    // IMPORTANT: totalSpent is already in dollars (not cents like the old amountSpent.amount)
+    const totalSpend = parseFloat(shopifyCustomer.totalSpent || "0");
 
     // Calculate if customer is active (has order in last 30 days)
     const thirtyDaysAgo = new Date();
@@ -227,7 +224,7 @@ export class CustomerSyncService {
         lastName: shopifyCustomer.lastName,
         phone: shopifyCustomer.phone,
         totalSpend,
-        numberOfOrders: shopifyCustomer.numberOfOrders,
+        numberOfOrders: shopifyCustomer.ordersCount,
         lastOrderDate: shopifyCustomer.lastOrder
           ? new Date(shopifyCustomer.lastOrder.createdAt)
           : null,
@@ -250,7 +247,7 @@ export class CustomerSyncService {
         lastName: shopifyCustomer.lastName,
         phone: shopifyCustomer.phone,
         totalSpend,
-        numberOfOrders: shopifyCustomer.numberOfOrders,
+        numberOfOrders: shopifyCustomer.ordersCount,
         lastOrderDate: shopifyCustomer.lastOrder
           ? new Date(shopifyCustomer.lastOrder.createdAt)
           : null,
@@ -345,10 +342,8 @@ export class CustomerSyncService {
                     lastName
                     email
                     phone
-                    numberOfOrders
-                    amountSpent {
-                      amount
-                    }
+                    ordersCount
+                    totalSpent
                     tags
                     createdAt
                     lastOrder {
@@ -413,10 +408,8 @@ export class CustomerSyncService {
               lastName
               email
               phone
-              numberOfOrders
-              amountSpent {
-                amount
-              }
+              ordersCount
+              totalSpent
               tags
               createdAt
               lastOrder {
