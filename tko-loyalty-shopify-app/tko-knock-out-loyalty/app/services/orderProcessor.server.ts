@@ -197,15 +197,15 @@ export async function processFulfilledOrder(
     
     if (result.data?.customer) {
       const shopifyCustomer = result.data.customer;
-      // FIXED: amountSpent.amount is in cents, convert to dollars for 1:1 points system
-      const totalSpendCents = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
-      totalSpend = Math.round(totalSpendCents / 100); // Convert cents to dollars and round
+      // FIXED: amountSpent.amount is in dollars, use directly for 1:1 points system
+      const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+      totalSpend = Math.round(totalSpendDollars); // Round dollars to points (1:1 ratio)
       numberOfOrders = shopifyCustomer.numberOfOrders || 0;
       shopifyCreatedAt = shopifyCustomer.createdAt ? new Date(shopifyCustomer.createdAt) : null;
       lastOrderDate = shopifyCustomer.lastOrder?.processedAt ? new Date(shopifyCustomer.lastOrder.processedAt) : new Date(orderData.created_at);
       
       console.log(`✅ Shopify API customer data retrieved successfully:`);
-      console.log(`   💰 Accurate total spend: $${(totalSpendCents / 100).toFixed(2)} → ${totalSpend} points`);
+      console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
       console.log(`   📦 Number of orders: ${numberOfOrders}`);
       console.log(`   📅 Customer since: ${shopifyCreatedAt?.toLocaleDateString() || 'Unknown'}`);
       console.log(`   🛒 Last order: ${lastOrderDate?.toLocaleDateString() || 'Unknown'}`);

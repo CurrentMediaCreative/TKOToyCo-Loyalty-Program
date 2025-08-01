@@ -280,7 +280,9 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
 
     // Function to determine customer tier based on total spent
     async function getCustomerTierInfo(admin: Admin, amountSpent: any) {
-      const spent = parseFloat(amountSpent?.amount || "0");
+      // IMPORTANT: amountSpent.amount is in dollars, use directly
+      const spentDollars = parseFloat(amountSpent?.amount || "0");
+      const spent = spentDollars;
 
       // Fetch all tiers from the database
       const dbTiers = await getTiers();
@@ -333,7 +335,9 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
             admin,
             customer.amountSpent,
           );
-          const totalSpend = parseFloat(customer.amountSpent?.amount || "0");
+          // IMPORTANT: amountSpent.amount is in dollars, use directly
+          const totalSpendDollars = parseFloat(customer.amountSpent?.amount || "0");
+          const totalSpend = totalSpendDollars;
 
           // Calculate points from spend (1:1 ratio)
           const spendPoints = totalSpend;

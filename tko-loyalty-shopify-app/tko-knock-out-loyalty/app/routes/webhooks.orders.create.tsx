@@ -213,13 +213,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             
             if (result.data?.customer) {
               const shopifyCustomer = result.data.customer;
-              // FIXED: amountSpent.amount is in cents, convert to dollars for 1:1 points system
-              const totalSpendCents = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
-              totalSpend = Math.round(totalSpendCents / 100); // Convert cents to dollars and round
+              // FIXED: amountSpent.amount is in dollars, use directly for 1:1 points system
+              const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+              totalSpend = Math.round(totalSpendDollars); // Round dollars to points (1:1 ratio)
               numberOfOrders = shopifyCustomer.numberOfOrders || 0;
               
               console.log(`✅ Shopify API customer data for pending order:`);
-              console.log(`   💰 Accurate total spend: $${(totalSpendCents / 100).toFixed(2)} → ${totalSpend} points`);
+              console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
               console.log(`   📦 Number of orders: ${numberOfOrders}`);
             } else {
               throw new Error(`No customer data returned from Shopify API`);

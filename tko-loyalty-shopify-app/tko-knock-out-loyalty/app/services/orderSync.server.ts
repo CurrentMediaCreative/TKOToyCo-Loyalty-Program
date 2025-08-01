@@ -356,9 +356,11 @@ export class OrderSyncService {
                 // Always update customer data with current Shopify data to ensure accuracy
                 if (!processedCustomers.has(customerShopifyId.toString())) {
                   // Use customer data from the order (which is current) to update our database
-                  const totalSpend = parseFloat(
+                  // IMPORTANT: amountSpent.amount is in dollars, use directly
+                  const totalSpendDollars = parseFloat(
                     shopifyOrder.customer.amountSpent?.amount || "0",
                   );
+                  const totalSpend = totalSpendDollars;
                   const numberOfOrders =
                     parseInt(shopifyOrder.customer.numberOfOrders) || 0;
 

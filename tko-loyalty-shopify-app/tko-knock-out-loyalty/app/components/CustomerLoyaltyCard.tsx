@@ -223,44 +223,75 @@ export function CustomerLoyaltyCard({
   // Get tier benefits for the customer's current tier
   const getTierBenefits = useCallback(() => {
     if (!tiers || tiers.length === 0) {
+      console.log("No tiers available");
       return [];
     }
     
-    // Find the tier that matches the customer's tier - try exact match first
-    let customerTier = tiers.find(tier => 
-      tier.name.toLowerCase() === customer.tier.toLowerCase()
-    );
+    console.log("Customer tier:", customer.tier);
+    console.log("Available tiers:", tiers.map(t => t.name));
     
-    // If no exact match, try partial matching
-    if (!customerTier) {
-      customerTier = tiers.find(tier => 
-        tier.name.toLowerCase().includes(customer.tier.toLowerCase()) ||
-        customer.tier.toLowerCase().includes(tier.name.toLowerCase())
-      );
-    }
+    // Normalize tier names by removing emojis and extra spaces
+    const normalizeTierName = (name: string) => 
+      name.replace(/[^\w\s]/gi, '').trim().toLowerCase();
     
-    if (!customerTier || !customerTier.benefits || customerTier.benefits.length === 0) {
+    const customerTierNormalized = normalizeTierName(customer.tier || '');
+    
+    // Find the tier that matches the customer's tier
+    const matchingTier = tiers.find(tier => {
+      const tierNameNormalized = normalizeTierName(tier.name || '');
+      return tierNameNormalized === customerTierNormalized;
+    });
+    
+    console.log("Matching tier found:", matchingTier?.name);
+    console.log("Benefits:", matchingTier?.benefits);
+    
+    if (!matchingTier || !matchingTier.benefits || matchingTier.benefits.length === 0) {
+      console.log("No matching tier or benefits found");
       return [];
     }
     
-    return customerTier.benefits.map((benefit: any) => benefit.name);
+    return matchingTier.benefits.map((benefit: any) => benefit.name);
   }, [tiers, customer.tier]);
 
   // Categorize benefits into purchase-relevant and other
   const categorizeBenefits = useCallback(() => {
     const allBenefits = getTierBenefits();
     
-    const purchaseRelevant = allBenefits.filter((benefit: string) => 
-      benefit.toLowerCase().includes('discount') ||
-      benefit.toLowerCase().includes('points per $1') ||
-      benefit.toLowerCase().includes('x points')
-    );
+    const purchaseRelevant = allBenefits.filter((benefit: string) => {
+      const lowerBenefit = benefit.toLowerCase();
+      return (
+        lowerBenefit.includes('discount') ||
+        lowerBenefit.includes('points per $1') ||
+        lowerBenefit.includes('x points') ||
+        lowerBenefit.includes('1.25x points') ||
+        lowerBenefit.includes('1.5x points') ||
+        lowerBenefit.includes('2x points') ||
+        lowerBenefit.includes('singles discount') ||
+        lowerBenefit.includes('sealed discount') ||
+        lowerBenefit.includes('supplies discount') ||
+        lowerBenefit.includes('toys & board games discount') ||
+        lowerBenefit.includes('pricing') ||
+        lowerBenefit.includes('price')
+      );
+    });
     
-    const otherBenefits = allBenefits.filter((benefit: string) => 
-      !benefit.toLowerCase().includes('discount') &&
-      !benefit.toLowerCase().includes('points per $1') &&
-      !benefit.toLowerCase().includes('x points')
-    );
+    const otherBenefits = allBenefits.filter((benefit: string) => {
+      const lowerBenefit = benefit.toLowerCase();
+      return !(
+        lowerBenefit.includes('discount') ||
+        lowerBenefit.includes('points per $1') ||
+        lowerBenefit.includes('x points') ||
+        lowerBenefit.includes('1.25x points') ||
+        lowerBenefit.includes('1.5x points') ||
+        lowerBenefit.includes('2x points') ||
+        lowerBenefit.includes('singles discount') ||
+        lowerBenefit.includes('sealed discount') ||
+        lowerBenefit.includes('supplies discount') ||
+        lowerBenefit.includes('toys & board games discount') ||
+        lowerBenefit.includes('pricing') ||
+        lowerBenefit.includes('price')
+      );
+    });
     
     return { purchaseRelevant, otherBenefits };
   }, [getTierBenefits]);
@@ -407,30 +438,35 @@ export function CustomerLoyaltyCard({
 
               <Divider />
 
-              {/* Purchase Benefits Section */}
-              {purchaseRelevant.length > 0 && (
+              {/* Tier Benefits Section */}
+              {(purchaseRelevant.length > 0 || getTierBenefits().length > 0) && (
                 <>
                   <BlockStack gap="200">
                     <InlineStack align="space-between">
                       <Text variant="headingSm" as="h4">
-                        Purchase Benefits
+                        {purchaseRelevant.length > 0 ? "Purchase Benefits" : "Tier Benefits"}
                       </Text>
-                      {otherBenefits.length > 0 && (
-                        <Button
-                          variant="plain"
-                          icon={<Icon source={ViewIcon} />}
-                          onClick={() => setShowAllBenefits(true)}
-                        >
-                          View All Tier Benefits
-                        </Button>
-                      )}
+                      <Button
+                        variant="plain"
+                        icon={<Icon source={ViewIcon} />}
+                        onClick={() => setShowAllBenefits(true)}
+                      >
+                        See All Benefits
+                      </Button>
                     </InlineStack>
                     <BlockStack gap="100">
-                      {purchaseRelevant.map((benefit: string, index: number) => (
-                        <Text key={index} variant="bodyMd" as="p">
-                          • {benefit}
-                        </Text>
-                      ))}
+                      {purchaseRelevant.length > 0 
+                        ? purchaseRelevant.slice(0, 3).map((benefit: string, index: number) => (
+                            <Text key={index} variant="bodyMd" as="p">
+                              • {benefit}
+                            </Text>
+                          ))
+                        : getTierBenefits().slice(0, 3).map((benefit: string, index: number) => (
+                            <Text key={index} variant="bodyMd" as="p">
+                              • {benefit}
+                            </Text>
+                          ))
+                      }
                     </BlockStack>
                   </BlockStack>
                   <Divider />
