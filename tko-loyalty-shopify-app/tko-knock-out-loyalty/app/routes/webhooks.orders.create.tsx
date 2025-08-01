@@ -197,7 +197,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 customer(id: $customerId) {
                   id
                   totalSpent
-                  ordersCount
+                  numberOfOrders
                 }
               }
             `;
@@ -212,7 +212,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               const shopifyCustomer = result.data.customer;
               // FIXED: Use correct GraphQL fields - totalSpent is already in dollars
               totalSpend = parseFloat(shopifyCustomer.totalSpent || "0");
-              numberOfOrders = shopifyCustomer.ordersCount || 0;
+              numberOfOrders = shopifyCustomer.numberOfOrders || 0;
               
               console.log(`✅ Shopify API customer data for pending order:`);
               console.log(`   💰 Accurate total spend: $${totalSpend.toFixed(2)} → ${totalSpend} points`);

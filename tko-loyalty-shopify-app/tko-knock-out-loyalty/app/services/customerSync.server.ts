@@ -7,7 +7,7 @@ interface ShopifyCustomer {
   lastName?: string;
   email?: string;
   phone?: string;
-  ordersCount: number;
+  numberOfOrders: number;
   totalSpent: string;
   tags: string[];
   createdAt: string;
@@ -89,7 +89,7 @@ export class CustomerSyncService {
                       lastName
                       email
                       phone
-                      ordersCount
+                      numberOfOrders
                       totalSpent
                       tags
                       createdAt
@@ -224,7 +224,7 @@ export class CustomerSyncService {
         lastName: shopifyCustomer.lastName,
         phone: shopifyCustomer.phone,
         totalSpend,
-        numberOfOrders: shopifyCustomer.ordersCount,
+        numberOfOrders: shopifyCustomer.numberOfOrders,
         lastOrderDate: shopifyCustomer.lastOrder
           ? new Date(shopifyCustomer.lastOrder.createdAt)
           : null,
@@ -247,7 +247,7 @@ export class CustomerSyncService {
         lastName: shopifyCustomer.lastName,
         phone: shopifyCustomer.phone,
         totalSpend,
-        numberOfOrders: shopifyCustomer.ordersCount,
+        numberOfOrders: shopifyCustomer.numberOfOrders,
         lastOrderDate: shopifyCustomer.lastOrder
           ? new Date(shopifyCustomer.lastOrder.createdAt)
           : null,
@@ -342,7 +342,7 @@ export class CustomerSyncService {
                     lastName
                     email
                     phone
-                    ordersCount
+                    numberOfOrders
                     totalSpent
                     tags
                     createdAt
@@ -408,7 +408,7 @@ export class CustomerSyncService {
               lastName
               email
               phone
-              ordersCount
+              numberOfOrders
               totalSpent
               tags
               createdAt
