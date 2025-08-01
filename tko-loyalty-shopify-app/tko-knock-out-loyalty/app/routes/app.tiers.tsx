@@ -271,6 +271,13 @@ export default function TiersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newBenefit, setNewBenefit] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [editingBenefit, setEditingBenefit] = useState<{
+    perk: string;
+    tierIndex: number;
+    currentValue: string;
+  } | null>(null);
+  const [benefitModalOpen, setBenefitModalOpen] = useState(false);
+  const [newBenefitValue, setNewBenefitValue] = useState("");
   const submit = useSubmit();
 
   const handleEditTier = (tier: any) => {
@@ -339,6 +346,142 @@ export default function TiersPage() {
       setIsModalOpen(false);
       setEditingTier(null);
       setIsCreating(false);
+    }
+  };
+
+  // Helper function to get benefit value for a specific tier and perk type
+  const getBenefitForTier = (tierName: string, perkType: string): string => {
+    const tier = tiers.find((t: any) => t.name.includes(tierName));
+    if (!tier) return "–";
+
+    const benefits = tier.benefits;
+    
+    switch (perkType) {
+      case "Points Per $1 Spent":
+        const pointsBenefit = benefits.find((b: string) => b.includes("Points Per $1") || b.includes("1.25x") || b.includes("1.5x") || b.includes("2x"));
+        if (pointsBenefit?.includes("2x")) return "2x";
+        if (pointsBenefit?.includes("1.5x")) return "1.5x";
+        if (pointsBenefit?.includes("1.25x")) return "1.25x";
+        return "–";
+      
+      case "Singles Discount":
+        const singlesBenefit = benefits.find((b: string) => b.includes("Singles Discount"));
+        if (singlesBenefit?.includes("15%")) return "15%";
+        if (singlesBenefit?.includes("10%")) return "10%";
+        if (singlesBenefit?.includes("7%")) return "7%";
+        if (singlesBenefit?.includes("3%")) return "3%";
+        return "–";
+      
+      case "Sealed Discount":
+        const sealedBenefit = benefits.find((b: string) => b.includes("Sealed Discount"));
+        if (sealedBenefit?.includes("5%")) return "5%";
+        if (sealedBenefit?.includes("3%")) return "3%";
+        if (sealedBenefit?.includes("2%")) return "2%";
+        if (sealedBenefit?.includes("1%")) return "1%";
+        return "–";
+      
+      case "Supplies Discount":
+        const suppliesBenefit = benefits.find((b: string) => b.includes("Supplies Discount"));
+        if (suppliesBenefit?.includes("20%")) return "20%";
+        if (suppliesBenefit?.includes("15%")) return "15%";
+        if (suppliesBenefit?.includes("10%")) return "10%";
+        if (suppliesBenefit?.includes("5%")) return "5%";
+        return "–";
+      
+      case "Toys & Board Games Discount":
+        const toysBenefit = benefits.find((b: string) => b.includes("Toys") && b.includes("Board Games"));
+        if (toysBenefit?.includes("15%")) return "15%";
+        if (toysBenefit?.includes("13%")) return "13%";
+        if (toysBenefit?.includes("8%")) return "8%";
+        if (toysBenefit?.includes("5%")) return "5%";
+        return "–";
+      
+      case "Birthday Gift":
+        const birthdayBenefit = benefits.find((b: string) => b.includes("Birthday Gift") || b.includes("Curated Premium Gift"));
+        if (birthdayBenefit?.includes("Curated Premium Gift")) return "🎁 Curated Premium Gift";
+        if (birthdayBenefit?.includes("$150+")) return "🎁 Gift ($150+ value)";
+        if (birthdayBenefit?.includes("$25+")) return "🎁 Gift ($25+ value)";
+        return "–";
+      
+      case "Bonus Point Days":
+        const bonusBenefit = benefits.find((b: string) => 
+          b.includes("Store Wide") || 
+          b.includes("Custom-curated") || 
+          b.includes("Exclusive Events") ||
+          b.includes("2x Wed")
+        );
+        if (bonusBenefit?.includes("Custom-curated")) return "Custom-curated Offers";
+        if (bonusBenefit?.includes("Exclusive Events")) return "All Above + Exclusive Events";
+        if (bonusBenefit?.includes("2x Wed")) return "Store Wide BPDs + 2x Wed + 2x 1st";
+        if (bonusBenefit?.includes("Store Wide")) return "Store Wide BPDs";
+        return "–";
+      
+      case "Early Product Access":
+        const accessBenefit = benefits.find((b: string) => b.includes("Pre-Orders") || b.includes("Guaranteed"));
+        if (accessBenefit?.includes("1 case/SKU")) return "Guaranteed Pre-Orders (1 case/SKU)";
+        if (accessBenefit?.includes("1 item/SKU")) return "Guaranteed Pre-Orders (1 item/SKU)";
+        if (accessBenefit?.includes("case by case")) return "Pre-Orders (case by case)";
+        return "–";
+      
+      case "Early Access Pricing":
+        const pricingBenefit = benefits.find((b: string) => 
+          b.includes("Elite Priority") || 
+          b.includes("Preferred Member") || 
+          b.includes("Exclusive Early Access")
+        );
+        if (pricingBenefit?.includes("Elite Priority")) return "Elite Priority Pricing";
+        if (pricingBenefit?.includes("Preferred Member")) return "Preferred Member Pricing";
+        if (pricingBenefit?.includes("Exclusive Early Access")) return "Exclusive Early Access";
+        return "–";
+      
+      case "Exclusive Events":
+        const eventsBenefit = benefits.find((b: string) => 
+          b.includes("VIP-only") || 
+          b.includes("Private Tier") || 
+          b.includes("Priority Registration")
+        );
+        if (eventsBenefit?.includes("VIP-only")) return "VIP-only Invites";
+        if (eventsBenefit?.includes("Private Tier")) return "Private Tier Events";
+        if (eventsBenefit?.includes("Priority Registration")) return "Priority Registration";
+        return "–";
+      
+      case "Discord Access":
+        const discordBenefit = benefits.find((b: string) => b.includes("Discord") || b.includes("Priority Channels"));
+        if (discordBenefit?.includes("Priority Channels")) return "Priority Channels";
+        if (discordBenefit?.includes("Discord")) return "Access";
+        return "–";
+      
+      case "Price + Product Holds":
+        const holdsBenefit = benefits.find((b: string) => b.includes("Lock") && !b.includes("Lock In Tier"));
+        if (holdsBenefit?.includes("72hr")) return "72hr Lock";
+        if (holdsBenefit?.includes("48hrs")) return "48hrs Lock";
+        if (holdsBenefit?.includes("Same Day")) return "Same Day Lock";
+        return "–";
+      
+      case "Mystery Rewards":
+        const mysteryBenefit = benefits.find((b: string) => 
+          b.includes("Monthly Premium Bundle") || 
+          b.includes("Quarterly Drop")
+        );
+        if (mysteryBenefit?.includes("Monthly Premium Bundle")) return "🎁 Monthly Premium Bundle";
+        if (mysteryBenefit?.includes("Quarterly Drop")) return "🎁 Quarterly Drop";
+        return "–";
+      
+      case "Tier Freeze":
+        const freezeBenefit = benefits.find((b: string) => b.includes("Lock In Tier"));
+        if (freezeBenefit?.includes("Lock In Tier 2x")) return "Lock In Tier 2x";
+        if (freezeBenefit?.includes("Lock In Tier 1x")) return "Lock In Tier 1x";
+        return "–";
+      
+      default:
+        return "–";
+    }
+  };
+
+  const handleBenefitClick = (perk: string, tierName: string, currentValue: string) => {
+    const tier = tiers.find(t => t.name.includes(tierName));
+    if (tier) {
+      handleEditTier(tier);
     }
   };
 
@@ -503,120 +646,21 @@ export default function TiersPage() {
                     </thead>
                     <tbody>
                       {[
-                        {
-                          perk: "Points Per $1 Spent",
-                          featherweight: "–",
-                          lightweight: "–",
-                          welterweight: "1.25x",
-                          heavyweight: "1.5x",
-                          reigningChampion: "2x",
-                        },
-                        {
-                          perk: "Singles Discount",
-                          featherweight: "–",
-                          lightweight: "3%",
-                          welterweight: "7%",
-                          heavyweight: "10%",
-                          reigningChampion: "15%",
-                        },
-                        {
-                          perk: "Sealed Discount",
-                          featherweight: "–",
-                          lightweight: "1%",
-                          welterweight: "2%",
-                          heavyweight: "3%",
-                          reigningChampion: "5%",
-                        },
-                        {
-                          perk: "Supplies Discount",
-                          featherweight: "–",
-                          lightweight: "5%",
-                          welterweight: "10%",
-                          heavyweight: "15%",
-                          reigningChampion: "20%",
-                        },
-                        {
-                          perk: "Toys & Board Games Discount",
-                          featherweight: "–",
-                          lightweight: "5%",
-                          welterweight: "8%",
-                          heavyweight: "13%",
-                          reigningChampion: "15%",
-                        },
-                        {
-                          perk: "Birthday Gift",
-                          featherweight: "–",
-                          lightweight: "–",
-                          welterweight: "🎁 Gift ($25+ value)",
-                          heavyweight: "🎁 Gift ($150+ value)",
-                          reigningChampion: "🎁 Curated Premium Gift",
-                        },
-                        {
-                          perk: "Bonus Point Days",
-                          featherweight: "Store Wide BPDs",
-                          lightweight: "Store Wide BPDs",
-                          welterweight: "Store Wide BPDs + 2x Wed + 2x 1st",
-                          heavyweight: "All Above + Exclusive Events",
-                          reigningChampion: "Custom-curated Offers",
-                        },
-                        {
-                          perk: "Early Product Access",
-                          featherweight: "–",
-                          lightweight: "–",
-                          welterweight: "Pre-Orders (case by case)",
-                          heavyweight: "Guaranteed Pre-Orders (1 item/SKU)",
-                          reigningChampion:
-                            "Guaranteed Pre-Orders (1 case/SKU)",
-                        },
-                        {
-                          perk: "Early Access Pricing",
-                          featherweight: "–",
-                          lightweight: "–",
-                          welterweight: "Exclusive Early Access",
-                          heavyweight: "Preferred Member Pricing",
-                          reigningChampion: "Elite Priority Pricing",
-                        },
-                        {
-                          perk: "Exclusive Events",
-                          featherweight: "–",
-                          lightweight: "–",
-                          welterweight: "Priority Registration",
-                          heavyweight: "Private Tier Events",
-                          reigningChampion: "VIP-only Invites",
-                        },
-                        {
-                          perk: "Discord Access",
-                          featherweight: "Access",
-                          lightweight: "Access",
-                          welterweight: "Access",
-                          heavyweight: "Priority Channels",
-                          reigningChampion: "Priority Channels",
-                        },
-                        {
-                          perk: "Price + Product Holds",
-                          featherweight: "–",
-                          lightweight: "–",
-                          welterweight: "Same Day Lock",
-                          heavyweight: "48hrs Lock",
-                          reigningChampion: "72hr Lock",
-                        },
-                        {
-                          perk: "Mystery Rewards",
-                          featherweight: "–",
-                          lightweight: "–",
-                          welterweight: "–",
-                          heavyweight: "🎁 Quarterly Drop",
-                          reigningChampion: "🎁 Monthly Premium Bundle",
-                        },
-                        {
-                          perk: "Tier Freeze",
-                          featherweight: "–",
-                          lightweight: "–",
-                          welterweight: "Lock In Tier 1x",
-                          heavyweight: "Lock In Tier 2x",
-                          reigningChampion: "–",
-                        },
-                      ].map((benefit, index) => (
+                        "Points Per $1 Spent",
+                        "Singles Discount",
+                        "Sealed Discount",
+                        "Supplies Discount",
+                        "Toys & Board Games Discount",
+                        "Birthday Gift",
+                        "Bonus Point Days",
+                        "Early Product Access",
+                        "Early Access Pricing",
+                        "Exclusive Events",
+                        "Discord Access",
+                        "Price + Product Holds",
+                        "Mystery Rewards",
+                        "Tier Freeze",
+                      ].map((perkType, index) => (
                         <tr
                           key={index}
                           style={{
@@ -632,68 +676,33 @@ export default function TiersPage() {
                               borderRight: "1px solid #e1e3e5",
                             }}
                           >
-                            {benefit.perk}
+                            {perkType}
                           </td>
-                          <td
-                            style={{
-                              padding: "12px",
-                              textAlign: "center",
-                              color:
-                                benefit.featherweight === "–"
-                                  ? "#6d7175"
-                                  : "#202223",
-                            }}
-                          >
-                            {benefit.featherweight}
-                          </td>
-                          <td
-                            style={{
-                              padding: "12px",
-                              textAlign: "center",
-                              color:
-                                benefit.lightweight === "–"
-                                  ? "#6d7175"
-                                  : "#202223",
-                            }}
-                          >
-                            {benefit.lightweight}
-                          </td>
-                          <td
-                            style={{
-                              padding: "12px",
-                              textAlign: "center",
-                              color:
-                                benefit.welterweight === "–"
-                                  ? "#6d7175"
-                                  : "#202223",
-                            }}
-                          >
-                            {benefit.welterweight}
-                          </td>
-                          <td
-                            style={{
-                              padding: "12px",
-                              textAlign: "center",
-                              color:
-                                benefit.heavyweight === "–"
-                                  ? "#6d7175"
-                                  : "#202223",
-                            }}
-                          >
-                            {benefit.heavyweight}
-                          </td>
-                          <td
-                            style={{
-                              padding: "12px",
-                              textAlign: "center",
-                              color:
-                                benefit.reigningChampion === "–"
-                                  ? "#6d7175"
-                                  : "#202223",
-                            }}
-                          >
-                            {benefit.reigningChampion}
-                          </td>
+                          {["Featherweight", "Lightweight", "Welterweight", "Heavyweight", "Reigning Champion"].map((tierName) => {
+                            const value = getBenefitForTier(tierName, perkType);
+                            return (
+                              <td
+                                key={tierName}
+                                style={{
+                                  padding: "12px",
+                                  textAlign: "center",
+                                  color: value === "–" ? "#6d7175" : "#202223",
+                                  cursor: "pointer",
+                                  transition: "background-color 0.2s",
+                                }}
+                                onClick={() => handleBenefitClick(perkType, tierName, value)}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor = "#f0f0f0";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = "transparent";
+                                }}
+                                title={`Click to edit ${tierName} tier benefits`}
+                              >
+                                {value}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
