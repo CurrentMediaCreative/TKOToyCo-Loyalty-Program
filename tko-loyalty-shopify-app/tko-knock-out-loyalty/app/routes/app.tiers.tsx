@@ -28,6 +28,8 @@ import {
   updateTier,
   createTierBenefit,
   deleteTierBenefit,
+  createTierWithRangeAdjustment,
+  updateTierWithRangeAdjustment,
 } from "../services/tier.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -55,8 +57,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           name: "🥊 Featherweight",
           description: "#E0E0E0",
           minPoints: 0,
+          maxPoints: 1499,
           benefits: [
-            "Access to Store Wide Bonus Point Days",
+            "Store Wide Bonus Point Days",
             "Community Bonus Points (Events + Tournaments)",
             "Discord Access",
           ],
@@ -65,19 +68,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           name: "🥋 Lightweight",
           description: "#FFD23F",
           minPoints: 1500,
+          maxPoints: 4999,
           benefits: [
             "All Featherweight benefits",
             "3% Singles Discount",
             "1% Sealed Discount",
             "5% Supplies Discount",
             "5% Toys & Board Games Discount",
-            "Guaranteed Lightweight tier maintenance",
           ],
         },
         {
           name: "🥇 Welterweight",
           description: "#FF7C2A",
           minPoints: 5000,
+          maxPoints: 29999,
           benefits: [
             "All Lightweight benefits",
             "1.25x Points Per $1 Spent",
@@ -86,20 +90,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             "10% Supplies Discount",
             "8% Toys & Board Games Discount",
             "🎁 Birthday Gift ($25+ value)",
-            "2x Points Every Wednesday",
-            "2x Points Every 1st of Month",
-            "Access to Pre-Orders (case by case)",
-            "Exclusive Early Access Pricing",
-            "Priority Registration for Events",
-            "Same Day Price + Product Lock",
-            "Lock In Your Tier 1x (Tier Freeze)",
-            "15,000pts to Keep Welterweight",
+            "Store Wide BPDs + 2x Wed + 2x 1st",
+            "Pre-Orders (case by case)",
+            "Exclusive Early Access",
+            "Priority Registration",
+            "Same Day Lock",
+            "Lock In Tier 1x",
           ],
         },
         {
           name: "🏅 Heavyweight",
           description: "#00B8A2",
           minPoints: 30000,
+          maxPoints: null, // Open-ended until Reigning Champion
           benefits: [
             "All Welterweight benefits",
             "1.5x Points Per $1 Spent",
@@ -108,21 +111,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             "15% Supplies Discount",
             "13% Toys & Board Games Discount",
             "🎁 Birthday Gift ($150+ value)",
-            "Exclusive Bonus Point Day Events",
-            "Guaranteed Access to Pre-Orders (1 item per SKU)",
+            "All Above + Exclusive Events",
+            "Guaranteed Pre-Orders (1 item/SKU)",
             "Preferred Member Pricing",
             "Private Tier Events",
-            "Priority Discord Channels",
-            "48hrs Price + Product Lock",
-            "🎁 Quarterly Mystery Drop",
-            "Lock In Your Tier 2x (Tier Freeze)",
-            "45,000pts to Keep Heavyweight",
+            "Priority Channels",
+            "48hrs Lock",
+            "🎁 Quarterly Drop",
+            "Lock In Tier 2x",
           ],
         },
         {
           name: "👑 Reigning Champion",
           description: "#1F2937",
           minPoints: 9999999, // Effectively invite-only (unattainable value)
+          maxPoints: null,
           benefits: [
             "All Heavyweight benefits",
             "2x Points Per $1 Spent",
@@ -130,16 +133,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             "5% Sealed Discount",
             "20% Supplies Discount",
             "15% Toys & Board Games Discount",
-            "🎁 Curated Premium Birthday Gift",
-            "Custom-curated Bonus Point Offers",
-            "Guaranteed Access to Pre-Orders (1 case limit per SKU)",
-            "Elite Priority Pricing (Best Available Rate)",
-            "VIP-only Event Invites",
-            "Priority Discord Channels",
-            "72hr Price + Product Lock",
-            "🎁 Monthly Premium Mystery Bundle",
-            "Guaranteed Heavyweight tier maintenance",
-            "Invite-only status (up to 20 per year)",
+            "🎁 Curated Premium Gift",
+            "Custom-curated Offers",
+            "Guaranteed Pre-Orders (1 case/SKU)",
+            "Elite Priority Pricing",
+            "VIP-only Invites",
+            "Priority Channels",
+            "72hr Lock",
+            "🎁 Monthly Premium Bundle",
+            "Invite-only status",
           ],
         },
       ];
@@ -200,8 +202,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const color = formData.get("color") as string;
       const benefits = JSON.parse(formData.get("benefits") as string);
 
-      // Update the tier
-      await updateTier({
+      // Update the tier with smart range adjustment
+      await updateTierWithRangeAdjustment({
         id: tierId,
         name,
         description: color, // Store color in description field
@@ -237,8 +239,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const color = formData.get("color") as string;
       const benefits = JSON.parse(formData.get("benefits") as string);
 
-      // Create the tier
-      const tier = await createTier({
+      // Create the tier with smart range adjustment
+      const tier = await createTierWithRangeAdjustment({
         name,
         description: color, // Store color in description field
         minPoints,

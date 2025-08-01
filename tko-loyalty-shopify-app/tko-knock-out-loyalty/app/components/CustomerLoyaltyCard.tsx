@@ -253,9 +253,17 @@ export function CustomerLoyaltyCard({
     return matchingTier.benefits.map((benefit: any) => benefit.name);
   }, [tiers, customer.tier]);
 
+  // Check if it's customer's birthday (for birthday gift highlighting)
+  const isBirthday = useCallback((): boolean => {
+    // This would need to be implemented with actual customer birthday data
+    // For now, return false as we don't have birthday data in the current schema
+    return false;
+  }, []);
+
   // Categorize benefits into purchase-relevant and other
   const categorizeBenefits = useCallback(() => {
     const allBenefits = getTierBenefits();
+    const isCustomerBirthday = isBirthday();
     
     const purchaseRelevant = allBenefits.filter((benefit: string) => {
       const lowerBenefit = benefit.toLowerCase();
@@ -263,15 +271,17 @@ export function CustomerLoyaltyCard({
         lowerBenefit.includes('discount') ||
         lowerBenefit.includes('points per $1') ||
         lowerBenefit.includes('x points') ||
-        lowerBenefit.includes('1.25x points') ||
-        lowerBenefit.includes('1.5x points') ||
-        lowerBenefit.includes('2x points') ||
-        lowerBenefit.includes('singles discount') ||
-        lowerBenefit.includes('sealed discount') ||
-        lowerBenefit.includes('supplies discount') ||
-        lowerBenefit.includes('toys & board games discount') ||
+        lowerBenefit.includes('1.25x') ||
+        lowerBenefit.includes('1.5x') ||
+        lowerBenefit.includes('2x') ||
+        lowerBenefit.includes('singles') ||
+        lowerBenefit.includes('sealed') ||
+        lowerBenefit.includes('supplies') ||
+        lowerBenefit.includes('toys') ||
+        lowerBenefit.includes('board games') ||
         lowerBenefit.includes('pricing') ||
-        lowerBenefit.includes('price')
+        lowerBenefit.includes('price') ||
+        (isCustomerBirthday && lowerBenefit.includes('birthday'))
       );
     });
     
@@ -281,20 +291,22 @@ export function CustomerLoyaltyCard({
         lowerBenefit.includes('discount') ||
         lowerBenefit.includes('points per $1') ||
         lowerBenefit.includes('x points') ||
-        lowerBenefit.includes('1.25x points') ||
-        lowerBenefit.includes('1.5x points') ||
-        lowerBenefit.includes('2x points') ||
-        lowerBenefit.includes('singles discount') ||
-        lowerBenefit.includes('sealed discount') ||
-        lowerBenefit.includes('supplies discount') ||
-        lowerBenefit.includes('toys & board games discount') ||
+        lowerBenefit.includes('1.25x') ||
+        lowerBenefit.includes('1.5x') ||
+        lowerBenefit.includes('2x') ||
+        lowerBenefit.includes('singles') ||
+        lowerBenefit.includes('sealed') ||
+        lowerBenefit.includes('supplies') ||
+        lowerBenefit.includes('toys') ||
+        lowerBenefit.includes('board games') ||
         lowerBenefit.includes('pricing') ||
-        lowerBenefit.includes('price')
+        lowerBenefit.includes('price') ||
+        (isCustomerBirthday && lowerBenefit.includes('birthday'))
       );
     });
     
     return { purchaseRelevant, otherBenefits };
-  }, [getTierBenefits]);
+  }, [getTierBenefits, isBirthday]);
 
   // Build correct Shopify admin URL
   const getShopifyAdminUrl = useCallback((): string => {
