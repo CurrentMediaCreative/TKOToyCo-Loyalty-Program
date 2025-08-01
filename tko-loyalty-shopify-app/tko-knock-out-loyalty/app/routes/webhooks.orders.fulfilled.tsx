@@ -155,13 +155,53 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
     `👤 Customer: ${customerName} (${customerEmail}) - ID: ${customer.id}`,
   );
 
-  // Use customer total spend from webhook payload (no API call needed)
-  const rawTotalSpend = parseFloat(customer.total_spent || "0");
-  // Round to nearest dollar for points calculation
-  const totalSpend = Math.round(rawTotalSpend);
-  console.log(
-    `💰 Customer total spend: $${rawTotalSpend.toFixed(2)} → ${totalSpend} points`,
-  );
+  // FIXED: Use Shopify GraphQL API to get accurate customer total spend
+  // This replaces the unreliable webhook payload logic that was showing $0.00
+  let totalSpend = 0;
+  
+  try {
+    console.log(`🔍 Fetching accurate customer data from Shopify API for fulfilled order...`);
+    
+    const customerQuery = `
+      query GetCustomerForLoyalty($customerId: ID!) {
+        customer(id: $customerId) {
+          id
+          amountSpent {
+            amount
+            currencyCode
+          }
+          numberOfOrders
+        }
+      }
+    `;
+    
+    const response = await admin.graphql(customerQuery, {
+      variables: { customerId: `gid://shopify/Customer/${customer.id}` }
+    });
+    
+    const result = await response.json();
+    
+    if (result.data?.customer) {
+      const shopifyCustomer = result.data.customer;
+      // FIXED: amountSpent.amount is in dollars (not cents), use directly for 1:1 points system
+      const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+      totalSpend = Math.round(totalSpendDollars); // Round dollars to points (1:1 ratio)
+      
+      console.log(`✅ Shopify API customer data for fulfilled order:`);
+      console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
+    } else {
+      throw new Error(`No customer data returned from Shopify API`);
+    }
+  } catch (error) {
+    console.error(`❌ Error fetching customer data from Shopify API:`, error);
+    console.log(`⚠️ Falling back to webhook payload data (may be inaccurate)`);
+    
+    // Fallback to webhook data if API fails
+    const rawTotalSpend = parseFloat(customer.total_spent || "0");
+    totalSpend = Math.round(rawTotalSpend);
+    
+    console.log(`   📊 Fallback total spend: $${rawTotalSpend.toFixed(2)} → ${totalSpend} points`);
+  }
 
   // Create or update customer in our database
   let loyaltyCustomer;
