@@ -184,13 +184,59 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
 
         if (!loyaltyCustomer) {
-          // Use customer total spend from webhook payload (no API call needed)
-          const totalSpend = Math.round(
-            parseFloat(orderData.customer!.total_spent || "0"),
-          );
-          console.log(
-            `Using customer total spend from webhook payload: ${totalSpend}`,
-          );
+          // FIXED: Use Shopify GraphQL API to get accurate customer total spend
+          // This replaces the broken webhook payload logic that was showing $0.00
+          let totalSpend = 0;
+          let numberOfOrders = 0;
+          
+          try {
+            console.log(`🔍 Fetching accurate customer data from Shopify API for pending order...`);
+            
+            const customerQuery = `
+              query GetCustomerForLoyalty($customerId: ID!) {
+                customer(id: $customerId) {
+                  id
+                  amountSpent {
+                    amount
+                    currencyCode
+                  }
+                  numberOfOrders
+                }
+              }
+            `;
+            
+            const response = await admin.graphql(customerQuery, {
+              variables: { customerId: `gid://shopify/Customer/${orderData.customer!.id}` }
+            });
+            
+            const result = await response.json();
+            
+            if (result.data?.customer) {
+              const shopifyCustomer = result.data.customer;
+              // IMPORTANT: amountSpent.amount is already in dollars, not cents
+              // Convert to cents for our points system (1 dollar = 100 points)
+              const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent.amount || "0");
+              totalSpend = Math.round(totalSpendDollars * 100);
+              numberOfOrders = shopifyCustomer.numberOfOrders || 0;
+              
+              console.log(`✅ Shopify API customer data for pending order:`);
+              console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
+              console.log(`   📦 Number of orders: ${numberOfOrders}`);
+            } else {
+              throw new Error(`No customer data returned from Shopify API`);
+            }
+          } catch (error) {
+            console.error(`❌ Error fetching customer data from Shopify API:`, error);
+            console.log(`⚠️ Falling back to webhook payload data (may be inaccurate)`);
+            
+            // Fallback to webhook data if API fails
+            const rawTotalSpendFromWebhook = parseFloat(orderData.customer!.total_spent || "0");
+            const currentOrderAmount = parseFloat(orderData.total_price);
+            totalSpend = Math.round(rawTotalSpendFromWebhook + currentOrderAmount);
+            numberOfOrders = orderData.customer!.orders_count || 0;
+            
+            console.log(`   📊 Fallback total spend: $${(totalSpend / 100).toFixed(2)} → ${totalSpend} points`);
+          }
 
           const createdCustomer = await createOrUpdateCustomer({
             shopifyId: orderData.customer!.id,

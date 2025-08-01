@@ -30,10 +30,9 @@ export async function getCustomers() {
       tier: true,
     },
     orderBy: {
-      // @ts-ignore - totalPoints exists in the database but not in the generated types
       totalPoints: "desc",
     },
-  }) as unknown as Promise<CustomerWithPoints[]>;
+  });
 }
 
 export async function getCustomerById(id: string) {
@@ -79,17 +78,15 @@ export async function createOrUpdateCustomer({
   // Calculate points from spend (1:1 ratio, rounded to nearest dollar)
   const spendPoints = totalSpend !== undefined ? Math.round(totalSpend) : 0;
 
-  // Get existing customer to preserve bonus points if not provided
-  let existingBonusPoints = 0;
-  // @ts-ignore - bonusPoints exists in the database but not in the generated types
-  const existingCustomer = (await prisma.customer.findUnique({
+  // OPTIMIZED: Single query to get existing customer data (bonusPoints + emails)
+  // This reduces DB round-trips from 2 queries to 1
+  const existingCustomer = await prisma.customer.findUnique({
     where: { shopifyId: BigInt(shopifyId) },
-    select: { bonusPoints: true },
-  })) as { bonusPoints: number } | null;
+    select: { bonusPoints: true, emails: true },
+  });
 
-  if (existingCustomer) {
-    existingBonusPoints = existingCustomer.bonusPoints;
-  }
+  const existingBonusPoints = existingCustomer?.bonusPoints || 0;
+  const existingEmails = existingCustomer?.emails || [];
 
   // Use provided bonus points or existing ones
   const updatedBonusPoints =
@@ -118,17 +115,8 @@ export async function createOrUpdateCustomer({
 
   // Handle emails array - add email to emails array if provided and not already present
   let emailsToUpdate: string[] | undefined;
-  if (email) {
-    // Get existing emails
-    const existingCustomer = await prisma.customer.findUnique({
-      where: { shopifyId: BigInt(shopifyId) },
-      select: { emails: true },
-    });
-
-    const existingEmails = existingCustomer?.emails || [];
-    if (!existingEmails.includes(email)) {
-      emailsToUpdate = [...existingEmails, email];
-    }
+  if (email && !existingEmails.includes(email)) {
+    emailsToUpdate = [...existingEmails, email];
   }
 
   // Create or update the customer in our database
@@ -368,7 +356,6 @@ export async function updateCustomerBonusPoints(
   admin?: Admin, // Optional Shopify admin API context for metafield updates
 ) {
   // Get the customer to calculate new total points
-  // @ts-ignore - spendPoints exists in the database but not in the generated types
   const existingCustomer = await prisma.customer.findUnique({
     where: { id },
     select: { spendPoints: true, tierId: true, shopifyId: true },

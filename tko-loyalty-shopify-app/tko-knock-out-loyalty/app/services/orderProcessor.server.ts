@@ -151,25 +151,81 @@ export async function processFulfilledOrder(
     `👤 Customer: ${customerName} (${customerEmail}) - ID: ${customer.id}`,
   );
 
-  // CRITICAL FIX: Calculate correct total spend by adding current order to existing total
-  // The webhook payload's customer.total_spent is BEFORE the current order
-  const rawTotalSpendFromWebhook = parseFloat(customer.total_spent || "0");
-  const currentOrderAmount = parseFloat(orderData.total_price);
-  const correctedTotalSpend = rawTotalSpendFromWebhook + currentOrderAmount;
-  const totalSpend = Math.round(correctedTotalSpend);
+  // FIXED: Use Shopify GraphQL API to get accurate customer total spend
+  // This replaces the broken webhook payload logic that was showing $0.00
+  let totalSpend = 0;
+  let numberOfOrders = 0;
+  let shopifyCreatedAt = null;
+  let lastOrderDate = null;
   
-  console.log(
-    `💰 Customer spend calculation:`,
-  );
-  console.log(
-    `   📊 Previous total (from webhook): $${rawTotalSpendFromWebhook.toFixed(2)}`,
-  );
-  console.log(
-    `   🛒 Current order amount: $${currentOrderAmount.toFixed(2)}`,
-  );
-  console.log(
-    `   🎯 Corrected total spend: $${correctedTotalSpend.toFixed(2)} → ${totalSpend} points`,
-  );
+  try {
+    console.log(`🔍 Fetching accurate customer data from Shopify API...`);
+    
+    const customerQuery = `
+      query GetCustomerForLoyalty($customerId: ID!) {
+        customer(id: $customerId) {
+          id
+          email
+          firstName
+          lastName
+          phone
+          tags
+          createdAt
+          updatedAt
+          amountSpent {
+            amount
+            currencyCode
+          }
+          numberOfOrders
+          defaultAddress {
+            city
+            province
+            country
+          }
+          lastOrder {
+            processedAt
+          }
+        }
+      }
+    `;
+    
+    const response = await admin.graphql(customerQuery, {
+      variables: { customerId: `gid://shopify/Customer/${customer.id}` }
+    });
+    
+    const result = await response.json();
+    
+    if (result.data?.customer) {
+      const shopifyCustomer = result.data.customer;
+      // IMPORTANT: amountSpent.amount is already in dollars, not cents
+      // Convert to cents for our points system (1 dollar = 100 points)
+      const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent.amount || "0");
+      totalSpend = Math.round(totalSpendDollars * 100);
+      numberOfOrders = shopifyCustomer.numberOfOrders || 0;
+      shopifyCreatedAt = shopifyCustomer.createdAt ? new Date(shopifyCustomer.createdAt) : null;
+      lastOrderDate = shopifyCustomer.lastOrder?.processedAt ? new Date(shopifyCustomer.lastOrder.processedAt) : new Date(orderData.created_at);
+      
+      console.log(`✅ Shopify API customer data retrieved successfully:`);
+      console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
+      console.log(`   📦 Number of orders: ${numberOfOrders}`);
+      console.log(`   📅 Customer since: ${shopifyCreatedAt?.toLocaleDateString() || 'Unknown'}`);
+      console.log(`   🛒 Last order: ${lastOrderDate?.toLocaleDateString() || 'Unknown'}`);
+    } else {
+      throw new Error(`No customer data returned from Shopify API`);
+    }
+  } catch (error) {
+    console.error(`❌ Error fetching customer data from Shopify API:`, error);
+    console.log(`⚠️ Falling back to webhook payload data (may be inaccurate)`);
+    
+    // Fallback to webhook data if API fails
+    const rawTotalSpendFromWebhook = parseFloat(customer.total_spent || "0");
+    const currentOrderAmount = parseFloat(orderData.total_price);
+    totalSpend = Math.round(rawTotalSpendFromWebhook + currentOrderAmount);
+    numberOfOrders = customer.orders_count || 0;
+    lastOrderDate = new Date(orderData.created_at);
+    
+    console.log(`   📊 Fallback total spend: $${(totalSpend / 100).toFixed(2)} → ${totalSpend} points`);
+  }
 
   // Create or update customer in our database
   let loyaltyCustomer;
@@ -272,6 +328,10 @@ export async function processFulfilledOrder(
     );
   }
 
+  // OPTIMIZED: Use shared Prisma client for all database operations
+  const { PrismaClient } = await import("@prisma/client");
+  const prisma = new PrismaClient();
+
   // Check for existing bonus point transactions to prevent duplicates
   console.log(
     `🔍 Checking for existing bonus point transactions for order ${orderId}...`,
@@ -279,9 +339,6 @@ export async function processFulfilledOrder(
   let existingBonusTransactions: any[] = [];
 
   try {
-    const { PrismaClient } = await import("@prisma/client");
-    const prisma = new PrismaClient();
-
     existingBonusTransactions = await prisma.pointTransaction.findMany({
       where: {
         customerId: loyaltyCustomer.id,
@@ -294,8 +351,6 @@ export async function processFulfilledOrder(
         },
       },
     });
-
-    await prisma.$disconnect();
 
     if (existingBonusTransactions.length > 0) {
       console.log(
@@ -342,10 +397,8 @@ export async function processFulfilledOrder(
         `✅ Bonus calculation completed: ${bonusPoints} total bonus points from ${appliedEvents.length} events`,
       );
 
-      // Get event names for logging
+      // OPTIMIZED: Get event names for logging using shared Prisma client
       if (appliedEvents.length > 0) {
-        const { PrismaClient } = await import("@prisma/client");
-        const prisma = new PrismaClient();
         try {
           const events = await prisma.pointEvent.findMany({
             where: { id: { in: appliedEvents.map((e) => e.eventId) } },
@@ -354,8 +407,6 @@ export async function processFulfilledOrder(
           eventNames = events.map((e) => e.name);
         } catch (error) {
           console.error("❌ Error fetching event names:", error);
-        } finally {
-          await prisma.$disconnect();
         }
       }
     } catch (error) {
@@ -380,28 +431,27 @@ export async function processFulfilledOrder(
     }
   }
 
-  // Create bonus point transactions with enhanced error handling and duplicate prevention
+  // OPTIMIZED: Batch check for existing transactions to prevent duplicates
   let transactionErrors = 0;
   let transactionsCreated = 0;
 
+  // Get all existing transactions for these events in one query
+  const existingEventTransactions = await prisma.pointTransaction.findMany({
+    where: {
+      customerId: loyaltyCustomer.id,
+      orderId: orderId,
+      eventId: { in: appliedEvents.map(e => e.eventId) },
+      type: "bonus",
+    },
+    select: { eventId: true },
+  });
+
+  const existingEventIds = new Set(existingEventTransactions.map(t => t.eventId));
+
   for (const appliedEvent of appliedEvents) {
     try {
-      // Double-check for existing transaction for this specific event
-      const { PrismaClient } = await import("@prisma/client");
-      const prisma = new PrismaClient();
-
-      const existingTransaction = await prisma.pointTransaction.findFirst({
-        where: {
-          customerId: loyaltyCustomer.id,
-          orderId: orderId,
-          eventId: appliedEvent.eventId,
-          type: "bonus",
-        },
-      });
-
-      await prisma.$disconnect();
-
-      if (existingTransaction) {
+      // Check if transaction already exists using batched data
+      if (existingEventIds.has(appliedEvent.eventId)) {
         console.log(
           `⚠️ Skipping duplicate bonus transaction for event ${appliedEvent.eventId} (${appliedEvent.pointsAwarded} points)`,
         );
@@ -429,6 +479,9 @@ export async function processFulfilledOrder(
       transactionErrors++;
     }
   }
+
+  // Clean up Prisma client
+  await prisma.$disconnect();
 
   if (transactionErrors > 0) {
     console.log(`⚠️ ${transactionErrors} bonus transactions failed to create`);
