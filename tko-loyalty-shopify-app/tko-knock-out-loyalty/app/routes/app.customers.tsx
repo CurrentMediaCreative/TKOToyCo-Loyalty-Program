@@ -25,6 +25,7 @@ import {
   getCustomers,
 } from "../services/customer.server";
 import { adjustCustomerBonusPoints } from "../services/pointTransaction.server";
+import { getTiers } from "../services/tier.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 import { serializeBigInt } from "../utils/serialization";
 
@@ -82,6 +83,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     // Fetch customers from our database only - no more API calls!
     const dbCustomers = await getCustomers();
+    
+    // Fetch all tiers with their benefits for the loyalty card
+    const tiers = await getTiers();
 
     // Transform database customers to match the expected format
     const customers = dbCustomers.map((dbCustomer: any) => {
@@ -123,6 +127,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     return json({
       customers: serializeBigInt(customers),
+      tiers: serializeBigInt(tiers),
       success: true,
       error: null,
     });
@@ -139,11 +144,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export default function CustomersPage() {
   interface LoaderData {
     customers: any[];
+    tiers: any[];
     success: boolean;
     error: string | null;
   }
 
-  const { customers, success, error } = useLoaderData<LoaderData>();
+  const { customers, tiers, success, error } = useLoaderData<LoaderData>();
   const submit = useSubmit();
   const [searchValue, setSearchValue] = useState("");
   const [selectedTab, setSelectedTab] = useState(0);
@@ -576,6 +582,7 @@ export default function CustomersPage() {
       {selectedCustomer && (
         <CustomerLoyaltyCard
           customer={selectedCustomer}
+          tiers={tiers}
           onClose={handleCloseCustomerModal}
         />
       )}

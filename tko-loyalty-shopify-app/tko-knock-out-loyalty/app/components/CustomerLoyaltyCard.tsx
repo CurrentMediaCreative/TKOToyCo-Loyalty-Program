@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Modal,
   Card,
@@ -11,7 +11,7 @@ import {
   Grid,
   Divider,
 } from "@shopify/polaris";
-import { XIcon, StarIcon, ExternalIcon } from "@shopify/polaris-icons";
+import { XIcon, StarIcon, ExternalIcon, ViewIcon } from "@shopify/polaris-icons";
 
 // Unified interface for customer data - works with both dashboard and customer page
 interface CustomerData {
@@ -62,14 +62,17 @@ interface CustomerData {
 
 interface CustomerLoyaltyCardProps {
   customer: CustomerData;
+  tiers: any[];
   onClose: () => void;
   onCrownReigningChampion?: (customerId: string) => void;
 }
 
 export function CustomerLoyaltyCard({
   customer,
+  tiers,
   onClose,
 }: CustomerLoyaltyCardProps) {
+  const [showAllBenefits, setShowAllBenefits] = useState(false);
   // Extract Shopify ID from various possible formats
   const getShopifyId = useCallback((): string => {
     // Try shopifyId field first
@@ -217,6 +220,40 @@ export function CustomerLoyaltyCard({
     }
   }, []);
 
+  // Get tier benefits for the customer's current tier
+  const getTierBenefits = useCallback(() => {
+    if (!tiers || tiers.length === 0) return [];
+    
+    // Find the tier that matches the customer's tier
+    const customerTier = tiers.find(tier => 
+      tier.name.toLowerCase().includes(customer.tier.toLowerCase()) ||
+      customer.tier.toLowerCase().includes(tier.name.toLowerCase())
+    );
+    
+    if (!customerTier || !customerTier.benefits) return [];
+    
+    return customerTier.benefits.map((benefit: any) => benefit.name);
+  }, [tiers, customer.tier]);
+
+  // Categorize benefits into purchase-relevant and other
+  const categorizeBenefits = useCallback(() => {
+    const allBenefits = getTierBenefits();
+    
+    const purchaseRelevant = allBenefits.filter((benefit: string) => 
+      benefit.toLowerCase().includes('discount') ||
+      benefit.toLowerCase().includes('points per $1') ||
+      benefit.toLowerCase().includes('x points')
+    );
+    
+    const otherBenefits = allBenefits.filter((benefit: string) => 
+      !benefit.toLowerCase().includes('discount') &&
+      !benefit.toLowerCase().includes('points per $1') &&
+      !benefit.toLowerCase().includes('x points')
+    );
+    
+    return { purchaseRelevant, otherBenefits };
+  }, [getTierBenefits]);
+
   // Build correct Shopify admin URL
   const getShopifyAdminUrl = useCallback((): string => {
     const shopifyId = getShopifyId();
@@ -232,6 +269,7 @@ export function CustomerLoyaltyCard({
   const avgMonthlySpend = getAverageMonthlySpend();
   const loyaltyLevel = getLoyaltyLevel();
   const shopifyAdminUrl = getShopifyAdminUrl();
+  const { purchaseRelevant, otherBenefits } = categorizeBenefits();
 
   return (
     <Modal
@@ -358,6 +396,36 @@ export function CustomerLoyaltyCard({
 
               <Divider />
 
+              {/* Purchase Benefits Section */}
+              {purchaseRelevant.length > 0 && (
+                <>
+                  <BlockStack gap="200">
+                    <InlineStack align="space-between">
+                      <Text variant="headingSm" as="h4">
+                        Purchase Benefits
+                      </Text>
+                      {otherBenefits.length > 0 && (
+                        <Button
+                          variant="plain"
+                          icon={<Icon source={ViewIcon} />}
+                          onClick={() => setShowAllBenefits(true)}
+                        >
+                          View All Tier Benefits
+                        </Button>
+                      )}
+                    </InlineStack>
+                    <BlockStack gap="100">
+                      {purchaseRelevant.map((benefit: string, index: number) => (
+                        <Text key={index} variant="bodyMd" as="p">
+                          • {benefit}
+                        </Text>
+                      ))}
+                    </BlockStack>
+                  </BlockStack>
+                  <Divider />
+                </>
+              )}
+
               <BlockStack gap="200">
                 <Text variant="headingSm" as="h4">
                   Customer Details
@@ -420,6 +488,63 @@ export function CustomerLoyaltyCard({
           </Card>
         </BlockStack>
       </Modal.Section>
+
+      {/* Secondary Modal for All Tier Benefits */}
+      {showAllBenefits && (
+        <Modal
+          open={showAllBenefits}
+          onClose={() => setShowAllBenefits(false)}
+          title={`All ${customer.tier} Benefits`}
+          primaryAction={{
+            content: "Close",
+            onAction: () => setShowAllBenefits(false),
+          }}
+        >
+          <Modal.Section>
+            <BlockStack gap="300">
+              <Text variant="bodyMd" as="p">
+                Complete list of benefits for the {customer.tier} tier:
+              </Text>
+              
+              {purchaseRelevant.length > 0 && (
+                <BlockStack gap="200">
+                  <Text variant="headingSm" as="h4">
+                    Purchase Benefits
+                  </Text>
+                  <BlockStack gap="100">
+                    {purchaseRelevant.map((benefit: string, index: number) => (
+                      <Text key={index} variant="bodyMd" as="p">
+                        • {benefit}
+                      </Text>
+                    ))}
+                  </BlockStack>
+                </BlockStack>
+              )}
+
+              {otherBenefits.length > 0 && (
+                <BlockStack gap="200">
+                  <Text variant="headingSm" as="h4">
+                    Additional Benefits
+                  </Text>
+                  <BlockStack gap="100">
+                    {otherBenefits.map((benefit: string, index: number) => (
+                      <Text key={index} variant="bodyMd" as="p">
+                        • {benefit}
+                      </Text>
+                    ))}
+                  </BlockStack>
+                </BlockStack>
+              )}
+
+              {purchaseRelevant.length === 0 && otherBenefits.length === 0 && (
+                <Text variant="bodyMd" as="p" tone="subdued">
+                  No specific benefits configured for this tier.
+                </Text>
+              )}
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+      )}
     </Modal>
   );
 }
