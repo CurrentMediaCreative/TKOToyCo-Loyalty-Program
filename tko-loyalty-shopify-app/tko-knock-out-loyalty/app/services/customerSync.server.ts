@@ -201,6 +201,8 @@ export class CustomerSyncService {
     );
     // IMPORTANT: amountSpent.amount contains the spend amount in the store's currency
     const totalSpend = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+    // FIXED: Convert numberOfOrders to integer for Prisma
+    const numberOfOrders = parseInt(shopifyCustomer.numberOfOrders.toString(), 10);
 
     // Calculate if customer is active (has order in last 30 days)
     const thirtyDaysAgo = new Date();
@@ -230,7 +232,7 @@ export class CustomerSyncService {
         lastName: shopifyCustomer.lastName,
         phone: shopifyCustomer.phone,
         totalSpend,
-        numberOfOrders: shopifyCustomer.numberOfOrders,
+        numberOfOrders,
         lastOrderDate: shopifyCustomer.lastOrder
           ? new Date(shopifyCustomer.lastOrder.createdAt)
           : null,
@@ -253,7 +255,7 @@ export class CustomerSyncService {
         lastName: shopifyCustomer.lastName,
         phone: shopifyCustomer.phone,
         totalSpend,
-        numberOfOrders: shopifyCustomer.numberOfOrders,
+        numberOfOrders,
         lastOrderDate: shopifyCustomer.lastOrder
           ? new Date(shopifyCustomer.lastOrder.createdAt)
           : null,
