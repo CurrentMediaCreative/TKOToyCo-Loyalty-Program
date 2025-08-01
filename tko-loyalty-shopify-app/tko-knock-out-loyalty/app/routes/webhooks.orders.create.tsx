@@ -213,13 +213,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             
             if (result.data?.customer) {
               const shopifyCustomer = result.data.customer;
-              // FIXED: Use correct GraphQL fields - amountSpent.amount contains the spend amount
-              totalSpend = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
-              // FIXED: Convert numberOfOrders to integer for consistency
-              numberOfOrders = parseInt(shopifyCustomer.numberOfOrders?.toString() || "0", 10);
+              // FIXED: amountSpent.amount is in cents, convert to dollars for 1:1 points system
+              const totalSpendCents = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+              totalSpend = Math.round(totalSpendCents / 100); // Convert cents to dollars and round
+              numberOfOrders = shopifyCustomer.numberOfOrders || 0;
               
               console.log(`✅ Shopify API customer data for pending order:`);
-              console.log(`   💰 Accurate total spend: $${totalSpend.toFixed(2)} → ${totalSpend} points`);
+              console.log(`   💰 Accurate total spend: $${(totalSpendCents / 100).toFixed(2)} → ${totalSpend} points`);
               console.log(`   📦 Number of orders: ${numberOfOrders}`);
             } else {
               throw new Error(`No customer data returned from Shopify API`);

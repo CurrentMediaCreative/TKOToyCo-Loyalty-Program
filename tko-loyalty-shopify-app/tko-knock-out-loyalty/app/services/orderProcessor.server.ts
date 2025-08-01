@@ -197,16 +197,15 @@ export async function processFulfilledOrder(
     
     if (result.data?.customer) {
       const shopifyCustomer = result.data.customer;
-      // IMPORTANT: amountSpent.amount is already in dollars, not cents
-      // Convert to cents for our points system (1 dollar = 100 points)
-      const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent.amount || "0");
-      totalSpend = Math.round(totalSpendDollars * 100);
+      // FIXED: amountSpent.amount is in cents, convert to dollars for 1:1 points system
+      const totalSpendCents = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+      totalSpend = Math.round(totalSpendCents / 100); // Convert cents to dollars and round
       numberOfOrders = shopifyCustomer.numberOfOrders || 0;
       shopifyCreatedAt = shopifyCustomer.createdAt ? new Date(shopifyCustomer.createdAt) : null;
       lastOrderDate = shopifyCustomer.lastOrder?.processedAt ? new Date(shopifyCustomer.lastOrder.processedAt) : new Date(orderData.created_at);
       
       console.log(`✅ Shopify API customer data retrieved successfully:`);
-      console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
+      console.log(`   💰 Accurate total spend: $${(totalSpendCents / 100).toFixed(2)} → ${totalSpend} points`);
       console.log(`   📦 Number of orders: ${numberOfOrders}`);
       console.log(`   📅 Customer since: ${shopifyCreatedAt?.toLocaleDateString() || 'Unknown'}`);
       console.log(`   🛒 Last order: ${lastOrderDate?.toLocaleDateString() || 'Unknown'}`);
@@ -272,9 +271,9 @@ export async function processFulfilledOrder(
   // This webhook only handles bonus points from events
 
   // Extract product IDs and fetch their collections with enhanced error handling
-  const productIds = orderData.line_items.map((item) =>
-    item.product_id.toString(),
-  );
+  const productIds = orderData.line_items
+    .filter((item) => item.product_id != null) // Filter out null/undefined product_ids
+    .map((item) => item.product_id.toString());
   let productCollections: Record<string, string[]> = {};
   let collectionFetchSuccess = false;
 
@@ -293,13 +292,15 @@ export async function processFulfilledOrder(
     );
   }
 
-  // Prepare line items for bonus calculation (include ALL products)
-  const orderLineItems = orderData.line_items.map((item) => ({
-    productId: item.product_id.toString(),
-    price: parseFloat(item.price),
-    quantity: item.quantity,
-    collections: productCollections[item.product_id.toString()] || [],
-  }));
+  // Prepare line items for bonus calculation (include ALL products with valid product_ids)
+  const orderLineItems = orderData.line_items
+    .filter((item) => item.product_id != null) // Filter out null/undefined product_ids
+    .map((item) => ({
+      productId: item.product_id.toString(),
+      price: parseFloat(item.price),
+      quantity: item.quantity,
+      collections: productCollections[item.product_id.toString()] || [],
+    }));
 
   // Check if this is an in-store order (BinderPOS)
   const isInstoreOrder = isBinderPOSOrder(orderData.note || null);
