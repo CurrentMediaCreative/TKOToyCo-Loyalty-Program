@@ -26,6 +26,7 @@ import {
 } from "../services/customer.server";
 import { adjustCustomerBonusPoints } from "../services/pointTransaction.server";
 import { getTiers } from "../services/tier.server";
+import { syncAllCustomers } from "../services/customerSync.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 import { serializeBigInt } from "../utils/serialization";
 
@@ -65,6 +66,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
 
       return json({ success: true });
+    }
+
+    if (action === "syncAllCustomers") {
+      try {
+        console.log("🔄 Starting customer sync from admin interface...");
+        const result = await syncAllCustomers(admin);
+        
+        return json({
+          success: true,
+          syncResult: result,
+          message: `Successfully synced ${result.synced} customers in ${result.duration}ms. ${result.errors} errors.`
+        });
+      } catch (error) {
+        console.error("❌ Customer sync failed:", error);
+        return json({
+          success: false,
+          error: error instanceof Error ? error.message : "Customer sync failed"
+        });
+      }
     }
 
     return json({ success: false, error: "Invalid action" });
@@ -164,6 +184,9 @@ export default function CustomersPage() {
   );
   const [bonusPointsValue, setBonusPointsValue] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const resourceName = {
     singular: "customer",
@@ -485,6 +508,37 @@ export default function CustomersPage() {
     setSelectedCustomer(null);
   };
 
+  // Handle customer sync
+  const handleSyncCustomers = async () => {
+    setIsSyncing(true);
+    setSyncMessage(null);
+    setSyncError(null);
+
+    const formData = new FormData();
+    formData.append("action", "syncAllCustomers");
+
+    try {
+      const response = await fetch(window.location.pathname, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSyncMessage(result.message);
+        // Reload the page to show updated data
+        window.location.reload();
+      } else {
+        setSyncError(result.error || "Sync failed");
+      }
+    } catch (error) {
+      setSyncError("Network error during sync");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const rowMarkup = currentCustomers.map((customer: any, index: number) => {
     const id = customer.id.replace("gid://shopify/Customer/", "");
 
@@ -595,6 +649,18 @@ export default function CustomersPage() {
             </Banner>
           )}
 
+          {syncMessage && (
+            <Banner tone="success" onDismiss={() => setSyncMessage(null)}>
+              <p>{syncMessage}</p>
+            </Banner>
+          )}
+
+          {syncError && (
+            <Banner tone="critical" onDismiss={() => setSyncError(null)}>
+              <p>Sync Error: {syncError}</p>
+            </Banner>
+          )}
+
           <Card>
             <Tabs
               tabs={tabs}
@@ -602,15 +668,25 @@ export default function CustomersPage() {
               onSelect={handleTabChange}
             />
             <div style={{ padding: "16px" }}>
-              <TextField
-                label=""
-                value={searchValue}
-                onChange={setSearchValue}
-                placeholder="Search customers"
-                clearButton
-                onClearButtonClick={() => setSearchValue("")}
-                autoComplete="off"
-              />
+              <InlineStack align="space-between" gap="400">
+                <TextField
+                  label=""
+                  value={searchValue}
+                  onChange={setSearchValue}
+                  placeholder="Search customers"
+                  clearButton
+                  onClearButtonClick={() => setSearchValue("")}
+                  autoComplete="off"
+                />
+                <Button
+                  variant="primary"
+                  onClick={handleSyncCustomers}
+                  loading={isSyncing}
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? "Syncing..." : "Sync All Customers"}
+                </Button>
+              </InlineStack>
             </div>
 
             <InlineStack align="space-between" gap="400">
