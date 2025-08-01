@@ -222,15 +222,26 @@ export function CustomerLoyaltyCard({
 
   // Get tier benefits for the customer's current tier
   const getTierBenefits = useCallback(() => {
-    if (!tiers || tiers.length === 0) return [];
+    if (!tiers || tiers.length === 0) {
+      return [];
+    }
     
-    // Find the tier that matches the customer's tier
-    const customerTier = tiers.find(tier => 
-      tier.name.toLowerCase().includes(customer.tier.toLowerCase()) ||
-      customer.tier.toLowerCase().includes(tier.name.toLowerCase())
+    // Find the tier that matches the customer's tier - try exact match first
+    let customerTier = tiers.find(tier => 
+      tier.name.toLowerCase() === customer.tier.toLowerCase()
     );
     
-    if (!customerTier || !customerTier.benefits) return [];
+    // If no exact match, try partial matching
+    if (!customerTier) {
+      customerTier = tiers.find(tier => 
+        tier.name.toLowerCase().includes(customer.tier.toLowerCase()) ||
+        customer.tier.toLowerCase().includes(tier.name.toLowerCase())
+      );
+    }
+    
+    if (!customerTier || !customerTier.benefits || customerTier.benefits.length === 0) {
+      return [];
+    }
     
     return customerTier.benefits.map((benefit: any) => benefit.name);
   }, [tiers, customer.tier]);

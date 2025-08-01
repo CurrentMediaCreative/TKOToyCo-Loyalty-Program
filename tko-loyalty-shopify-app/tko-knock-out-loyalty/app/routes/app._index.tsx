@@ -37,6 +37,7 @@ import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 import { serializeBigInt } from "../utils/serialization";
 import { getDashboardMetrics } from "../services/dashboardMetrics.server";
 import { syncMissingOrders } from "../services/orderSync.server";
+import { getTiers } from "../services/tier.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -44,12 +45,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     // Use the optimized dashboard metrics service
     const dashboardData = await getDashboardMetrics(admin);
+    
+    // Fetch all tiers with their benefits for the loyalty card
+    const tiers = await getTiers();
 
     return json({
       stats: dashboardData.stats,
       tierCounts: dashboardData.tierCounts,
       todayCompetitors: serializeBigInt(dashboardData.todayCompetitors),
       monthCompetitors: serializeBigInt(dashboardData.monthCompetitors),
+      tiers: serializeBigInt(tiers),
     });
   } catch (error) {
     console.error("Dashboard loader error:", error);
@@ -74,6 +79,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       },
       todayCompetitors: [],
       monthCompetitors: [],
+      tiers: [],
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }
@@ -104,7 +110,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Index() {
-  const { stats, tierCounts, todayCompetitors, monthCompetitors, error } =
+  const { stats, tierCounts, todayCompetitors, monthCompetitors, tiers, error } =
     useLoaderData<typeof loader>() as any;
   const actionData = useActionData<typeof action>();
 
@@ -253,6 +259,7 @@ export default function Index() {
       {selectedCustomer && (
         <CustomerLoyaltyCard
           customer={selectedCustomer}
+          tiers={tiers}
           onClose={handleCloseCustomerModal}
         />
       )}
