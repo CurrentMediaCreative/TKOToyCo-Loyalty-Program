@@ -12,12 +12,48 @@ import { json, type ActionFunctionArgs } from "@remix-run/node";
  */
 export async function action({ request }: ActionFunctionArgs) {
   try {
-    const webVitalData = await request.json();
-
-    // Validate required Web Vitals data structure
-    if (!webVitalData.name || typeof webVitalData.value === "undefined") {
+    // Enhanced request validation
+    const contentType = request.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      console.warn("[WEB VITALS] Invalid content type:", contentType);
       return json(
-        { error: "Invalid Web Vitals data: missing name or value" },
+        { error: "Invalid content type. Expected application/json" },
+        { status: 400 },
+      );
+    }
+
+    let webVitalData;
+    try {
+      webVitalData = await request.json();
+    } catch (parseError) {
+      console.error("[WEB VITALS] JSON parse error:", parseError);
+      return json(
+        { error: "Invalid JSON data" },
+        { status: 400 },
+      );
+    }
+
+    // Enhanced validation with detailed error messages
+    if (!webVitalData || typeof webVitalData !== 'object') {
+      console.warn("[WEB VITALS] Invalid data structure:", webVitalData);
+      return json(
+        { error: "Invalid Web Vitals data: expected object" },
+        { status: 400 },
+      );
+    }
+
+    if (!webVitalData.name || typeof webVitalData.name !== 'string') {
+      console.warn("[WEB VITALS] Missing or invalid name field:", webVitalData.name);
+      return json(
+        { error: "Invalid Web Vitals data: missing or invalid name field" },
+        { status: 400 },
+      );
+    }
+
+    if (typeof webVitalData.value === "undefined" || typeof webVitalData.value !== 'number') {
+      console.warn("[WEB VITALS] Missing or invalid value field:", webVitalData.value);
+      return json(
+        { error: "Invalid Web Vitals data: missing or invalid value field" },
         { status: 400 },
       );
     }
@@ -46,9 +82,15 @@ export async function action({ request }: ActionFunctionArgs) {
       message: `Web Vital ${webVitalData.name} recorded successfully`,
     });
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(
       "[WEB VITALS ERROR] Failed to process Web Vitals data:",
-      error,
+      {
+        error: errorMessage,
+        url: request.url,
+        method: request.method,
+        headers: Object.fromEntries(request.headers.entries()),
+      }
     );
 
     return json(

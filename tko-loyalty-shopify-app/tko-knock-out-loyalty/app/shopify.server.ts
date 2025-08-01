@@ -10,6 +10,7 @@ const getAppUrl = () => {
 
   // Fail fast if URL is missing
   if (!url || url.trim() === "") {
+    console.error("❌ SHOPIFY_APP_URL environment variable is missing or empty");
     throw new Error(
       "SHOPIFY_APP_URL environment variable is required and cannot be empty",
     );
@@ -17,17 +18,24 @@ const getAppUrl = () => {
 
   try {
     // If no protocol, add https://
-    let formattedUrl = url;
-    if (!url.includes("://")) {
-      formattedUrl = `https://${url}`;
+    let formattedUrl = url.trim();
+    if (!formattedUrl.includes("://")) {
+      formattedUrl = `https://${formattedUrl}`;
     }
 
     // Validate URL by attempting to construct a URL object
-    new URL(formattedUrl);
+    const urlObject = new URL(formattedUrl);
+    
+    // Additional validation for common issues
+    if (!urlObject.hostname || urlObject.hostname === 'undefined') {
+      throw new Error("URL hostname is invalid or undefined");
+    }
+    
     console.log(`✅ Using app URL: ${formattedUrl}`);
     return formattedUrl;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`❌ Invalid SHOPIFY_APP_URL format: ${url}. Error: ${errorMessage}`);
     throw new Error(
       `Invalid SHOPIFY_APP_URL format: ${url}. Error: ${errorMessage}`,
     );

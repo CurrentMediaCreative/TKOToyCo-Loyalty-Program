@@ -24,7 +24,7 @@ function Document({ children }: { children: React.ReactNode }) {
         {/* Shopify API Key - Required for App Bridge initialization */}
         <meta
           name="shopify-api-key"
-          content="81275bdb1a912d7493a70992a17824bb"
+          content={process.env.SHOPIFY_API_KEY || ""}
         />
         <link
           rel="preconnect"
@@ -97,7 +97,13 @@ export default function App() {
 // Add Shopify document response headers
 export const headers = () => {
   try {
-    return addDocumentResponseHeaders({
+    // Validate that we have the necessary environment variables before calling Shopify headers
+    if (!process.env.SHOPIFY_APP_URL || !process.env.SHOPIFY_API_KEY) {
+      console.warn("⚠️ Missing required environment variables for Shopify headers, using fallback");
+      throw new Error("Missing required environment variables");
+    }
+
+    const shopifyHeaders = addDocumentResponseHeaders({
       headers: {
         "Content-Type": "text/html; charset=utf-8", // Ensure proper content type with charset
         "X-Content-Type-Options": "nosniff",
@@ -105,8 +111,24 @@ export const headers = () => {
         "X-Frame-Options": "SAMEORIGIN", // Add this to improve security
       },
     });
+
+    // Validate that the returned headers are valid
+    if (!shopifyHeaders || typeof shopifyHeaders !== 'object') {
+      console.warn("⚠️ Invalid headers returned from Shopify, using fallback");
+      throw new Error("Invalid headers returned from Shopify");
+    }
+
+    return shopifyHeaders;
   } catch (error) {
-    console.error("Error adding document response headers:", error);
+    // Enhanced error logging with more context
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("❌ Error adding document response headers:", {
+      error: errorMessage,
+      hasAppUrl: !!process.env.SHOPIFY_APP_URL,
+      hasApiKey: !!process.env.SHOPIFY_API_KEY,
+      appUrl: process.env.SHOPIFY_APP_URL ? 'present' : 'missing'
+    });
+    
     // Return basic headers if Shopify headers fail
     return {
       "Content-Type": "text/html; charset=utf-8",
