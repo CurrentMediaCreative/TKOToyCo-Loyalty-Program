@@ -458,22 +458,24 @@ export function CustomerLoyaltyCard({
                       <Text variant="headingSm" as="h4">
                         {purchaseRelevant.length > 0 ? "Purchase Benefits" : "Tier Benefits"}
                       </Text>
-                      <Button
-                        variant="plain"
-                        icon={<Icon source={ViewIcon} />}
-                        onClick={() => setShowAllBenefits(true)}
-                      >
-                        See All Benefits
-                      </Button>
+                      {otherBenefits.length > 0 && (
+                        <Button
+                          variant="plain"
+                          icon={<Icon source={ViewIcon} />}
+                          onClick={() => setShowAllBenefits(true)}
+                        >
+                          See All Benefits
+                        </Button>
+                      )}
                     </InlineStack>
                     <BlockStack gap="100">
                       {purchaseRelevant.length > 0 
-                        ? purchaseRelevant.slice(0, 3).map((benefit: string, index: number) => (
+                        ? purchaseRelevant.map((benefit: string, index: number) => (
                             <Text key={index} variant="bodyMd" as="p">
                               • {benefit}
                             </Text>
                           ))
-                        : getTierBenefits().slice(0, 3).map((benefit: string, index: number) => (
+                        : getTierBenefits().map((benefit: string, index: number) => (
                             <Text key={index} variant="bodyMd" as="p">
                               • {benefit}
                             </Text>
