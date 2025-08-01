@@ -9,6 +9,7 @@ import {
   WebhookProcessor,
   WebhookPerformanceMonitor,
 } from "../services/webhookProcessor.server";
+import { processFulfilledOrder } from "../services/orderProcessor.server";
 
 interface OrderLineItem {
   id: string;
@@ -151,59 +152,84 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Process webhook with duplicate prevention and error handling
     const result = await processor.processWebhook(async (admin) => {
       const orderId = orderData.id.toString();
-
-      // Add to pending orders queue (regardless of fulfillment status)
-      // Get or create customer first to get the customer ID
-      let loyaltyCustomer = await getCustomerByShopifyId(
-        orderData.customer!.id,
-      );
-
-      if (!loyaltyCustomer) {
-        // Use customer total spend from webhook payload (no API call needed)
-        const totalSpend = Math.round(
-          parseFloat(orderData.customer!.total_spent || "0"),
-        );
-        console.log(
-          `Using customer total spend from webhook payload: ${totalSpend}`,
-        );
-
-        loyaltyCustomer = await createOrUpdateCustomer({
-          shopifyId: orderData.customer!.id,
-          email: orderData.customer!.email,
-          firstName: orderData.customer!.first_name,
-          lastName: orderData.customer!.last_name,
-          totalSpend: totalSpend,
-          lastOrderDate: new Date(orderData.created_at),
-          admin,
-        });
-      }
-
-      await addPendingOrder({
-        shopifyOrderId: orderId,
-        customerId: loyaltyCustomer!.id,
-        orderData,
-      });
-
       const customerName = orderData.customer
         ? `${orderData.customer.first_name || ""} ${orderData.customer.last_name || ""}`.trim() ||
           "Unknown"
         : "No customer";
       const customerEmail = orderData.customer?.email || "No email";
 
-      console.log(`⏳ Order ${orderData.name} added to pending queue`);
-      console.log(
-        `   📋 Fulfillment status: ${orderData.fulfillment_status || "unfulfilled"}`,
-      );
-      console.log(`   👤 Customer: ${customerName} (${customerEmail})`);
-      console.log(
-        `   💰 Order total: $${parseFloat(orderData.total_price).toFixed(2)}`,
-      );
+      // CRITICAL FIX: Check if order is already fulfilled and process immediately
+      if (orderData.fulfillment_status === "fulfilled") {
+        console.log(`🚀 Order ${orderData.name} is already fulfilled - processing immediately`);
+        console.log(`   👤 Customer: ${customerName} (${customerEmail})`);
+        console.log(`   💰 Order total: $${parseFloat(orderData.total_price).toFixed(2)}`);
+        
+        // Process the fulfilled order immediately using the shared logic
+        const processResult = await processFulfilledOrder(orderData, admin);
+        
+        console.log(`✅ Order ${orderData.name} processed immediately - customer data updated`);
+        
+        return {
+          status: "fulfilled_immediately",
+          bonusPoints: processResult.bonusPoints,
+          appliedEvents: processResult.appliedEvents,
+          customerId: processResult.customerId,
+        };
+      } else {
+        console.log(`⏳ Order ${orderData.name} not yet fulfilled - adding to pending queue`);
+        
+        // Get or create customer first to get the customer ID
+        let loyaltyCustomer = await getCustomerByShopifyId(
+          orderData.customer!.id,
+        );
 
-      return {
-        status: "pending",
-        fulfillmentStatus: orderData.fulfillment_status,
-        customerId: loyaltyCustomer!.id,
-      };
+        if (!loyaltyCustomer) {
+          // Use customer total spend from webhook payload (no API call needed)
+          const totalSpend = Math.round(
+            parseFloat(orderData.customer!.total_spent || "0"),
+          );
+          console.log(
+            `Using customer total spend from webhook payload: ${totalSpend}`,
+          );
+
+          const createdCustomer = await createOrUpdateCustomer({
+            shopifyId: orderData.customer!.id,
+            email: orderData.customer!.email,
+            firstName: orderData.customer!.first_name,
+            lastName: orderData.customer!.last_name,
+            totalSpend: totalSpend,
+            lastOrderDate: new Date(orderData.created_at),
+            admin,
+          });
+          
+          // Type assertion to handle the emails field requirement
+          loyaltyCustomer = {
+            ...createdCustomer,
+            emails: createdCustomer.email ? [createdCustomer.email] : [],
+          } as any;
+        }
+
+        await addPendingOrder({
+          shopifyOrderId: orderId,
+          customerId: loyaltyCustomer!.id,
+          orderData,
+        });
+
+        console.log(`⏳ Order ${orderData.name} added to pending queue`);
+        console.log(
+          `   📋 Fulfillment status: ${orderData.fulfillment_status || "unfulfilled"}`,
+        );
+        console.log(`   👤 Customer: ${customerName} (${customerEmail})`);
+        console.log(
+          `   💰 Order total: $${parseFloat(orderData.total_price).toFixed(2)}`,
+        );
+
+        return {
+          status: "pending",
+          fulfillmentStatus: orderData.fulfillment_status,
+          customerId: loyaltyCustomer!.id,
+        };
+      }
     }, orderData);
 
     // Log performance metrics

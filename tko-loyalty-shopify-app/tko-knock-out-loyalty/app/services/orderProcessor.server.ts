@@ -151,12 +151,24 @@ export async function processFulfilledOrder(
     `👤 Customer: ${customerName} (${customerEmail}) - ID: ${customer.id}`,
   );
 
-  // Use customer total spend from webhook payload (no API call needed)
-  const rawTotalSpend = parseFloat(customer.total_spent || "0");
-  // Round to nearest dollar for points calculation
-  const totalSpend = Math.round(rawTotalSpend);
+  // CRITICAL FIX: Calculate correct total spend by adding current order to existing total
+  // The webhook payload's customer.total_spent is BEFORE the current order
+  const rawTotalSpendFromWebhook = parseFloat(customer.total_spent || "0");
+  const currentOrderAmount = parseFloat(orderData.total_price);
+  const correctedTotalSpend = rawTotalSpendFromWebhook + currentOrderAmount;
+  const totalSpend = Math.round(correctedTotalSpend);
+  
   console.log(
-    `💰 Customer total spend: $${rawTotalSpend.toFixed(2)} → ${totalSpend} points`,
+    `💰 Customer spend calculation:`,
+  );
+  console.log(
+    `   📊 Previous total (from webhook): $${rawTotalSpendFromWebhook.toFixed(2)}`,
+  );
+  console.log(
+    `   🛒 Current order amount: $${currentOrderAmount.toFixed(2)}`,
+  );
+  console.log(
+    `   🎯 Corrected total spend: $${correctedTotalSpend.toFixed(2)} → ${totalSpend} points`,
   );
 
   // Create or update customer in our database
