@@ -196,7 +196,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               query GetCustomerForLoyalty($customerId: ID!) {
                 customer(id: $customerId) {
                   id
-                  totalSpent
+                  amountSpent {
+                    amount
+                    currencyCode
+                  }
                   numberOfOrders
                 }
               }
@@ -210,8 +213,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             
             if (result.data?.customer) {
               const shopifyCustomer = result.data.customer;
-              // FIXED: Use correct GraphQL fields - totalSpent is already in dollars
-              totalSpend = parseFloat(shopifyCustomer.totalSpent || "0");
+              // FIXED: Use correct GraphQL fields - amountSpent.amount contains the spend amount
+              totalSpend = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
               numberOfOrders = shopifyCustomer.numberOfOrders || 0;
               
               console.log(`✅ Shopify API customer data for pending order:`);

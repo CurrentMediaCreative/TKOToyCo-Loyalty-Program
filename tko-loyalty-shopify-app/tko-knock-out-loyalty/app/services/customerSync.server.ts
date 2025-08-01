@@ -8,7 +8,10 @@ interface ShopifyCustomer {
   email?: string;
   phone?: string;
   numberOfOrders: number;
-  totalSpent: string;
+  amountSpent: {
+    amount: string;
+    currencyCode: string;
+  };
   tags: string[];
   createdAt: string;
   lastOrder?: {
@@ -90,7 +93,10 @@ export class CustomerSyncService {
                       email
                       phone
                       numberOfOrders
-                      totalSpent
+                      amountSpent {
+                        amount
+                        currencyCode
+                      }
                       tags
                       createdAt
                       lastOrder {
@@ -193,8 +199,8 @@ export class CustomerSyncService {
     const shopifyId = parseInt(
       shopifyCustomer.id.replace("gid://shopify/Customer/", ""),
     );
-    // IMPORTANT: totalSpent is already in dollars (not cents like the old amountSpent.amount)
-    const totalSpend = parseFloat(shopifyCustomer.totalSpent || "0");
+    // IMPORTANT: amountSpent.amount contains the spend amount in the store's currency
+    const totalSpend = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
 
     // Calculate if customer is active (has order in last 30 days)
     const thirtyDaysAgo = new Date();
@@ -343,7 +349,10 @@ export class CustomerSyncService {
                     email
                     phone
                     numberOfOrders
-                    totalSpent
+                    amountSpent {
+                      amount
+                      currencyCode
+                    }
                     tags
                     createdAt
                     lastOrder {
@@ -409,7 +418,10 @@ export class CustomerSyncService {
               email
               phone
               numberOfOrders
-              totalSpent
+              amountSpent {
+                amount
+                currencyCode
+              }
               tags
               createdAt
               lastOrder {
