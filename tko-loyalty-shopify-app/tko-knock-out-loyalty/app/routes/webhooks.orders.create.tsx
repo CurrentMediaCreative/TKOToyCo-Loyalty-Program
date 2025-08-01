@@ -196,11 +196,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               query GetCustomerForLoyalty($customerId: ID!) {
                 customer(id: $customerId) {
                   id
-                  amountSpent {
-                    amount
-                    currencyCode
-                  }
-                  numberOfOrders
+                  totalSpent
+                  ordersCount
                 }
               }
             `;
@@ -213,14 +210,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             
             if (result.data?.customer) {
               const shopifyCustomer = result.data.customer;
-              // IMPORTANT: amountSpent.amount is already in dollars, not cents
-              // Convert to cents for our points system (1 dollar = 100 points)
-              const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent.amount || "0");
-              totalSpend = Math.round(totalSpendDollars * 100);
-              numberOfOrders = shopifyCustomer.numberOfOrders || 0;
+              // FIXED: Use correct GraphQL fields - totalSpent is already in dollars
+              totalSpend = parseFloat(shopifyCustomer.totalSpent || "0");
+              numberOfOrders = shopifyCustomer.ordersCount || 0;
               
               console.log(`✅ Shopify API customer data for pending order:`);
-              console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
+              console.log(`   💰 Accurate total spend: $${totalSpend.toFixed(2)} → ${totalSpend} points`);
               console.log(`   📦 Number of orders: ${numberOfOrders}`);
             } else {
               throw new Error(`No customer data returned from Shopify API`);
@@ -232,10 +227,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             // Fallback to webhook data if API fails
             const rawTotalSpendFromWebhook = parseFloat(orderData.customer!.total_spent || "0");
             const currentOrderAmount = parseFloat(orderData.total_price);
-            totalSpend = Math.round(rawTotalSpendFromWebhook + currentOrderAmount);
+            totalSpend = rawTotalSpendFromWebhook + currentOrderAmount;
             numberOfOrders = orderData.customer!.orders_count || 0;
             
-            console.log(`   📊 Fallback total spend: $${(totalSpend / 100).toFixed(2)} → ${totalSpend} points`);
+            console.log(`   📊 Fallback total spend: $${totalSpend.toFixed(2)} → ${totalSpend} points`);
           }
 
           const createdCustomer = await createOrUpdateCustomer({
