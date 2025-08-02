@@ -14,6 +14,31 @@ The project follows strict context management rules defined in `.clinerules`:
 
 ## Current Work Focus
 
+**STORE CREDIT SYNC IMPLEMENTATION - COMPLETED ✅**
+
+We successfully implemented comprehensive store credit tracking to fix the incomplete sync that was only processing 3,751 out of 16,381 orders.
+
+### Problem Solved:
+- **Root Cause**: Case-sensitive GraphQL queries missing order variations
+- **Example**: Eric Grier's order with "Store credit used: $150.00" (capital S) was missed by query `note:'store credit used'` (lowercase)
+- **Impact**: Customers with store credit usage had inflated loyalty points
+
+### Solution Implemented:
+1. **Multiple GraphQL Queries**: Added 7 different search patterns to catch all case variations
+2. **Proper Data Separation**: Preserve original Shopify totalSpend, track store credit separately
+3. **Loyalty-Eligible Calculation**: totalSpend - storeCreditUsed = loyaltyEligibleSpend
+4. **Database Schema**: Added `totalStoreCreditUsed` and `loyaltyEligibleSpend` fields
+5. **UI Enhancement**: Customer page shows breakdown columns, loyalty card shows spending breakdown
+
+### Completed Work:
+1. ✅ **Database Migration**: Added store credit tracking fields with Decimal precision
+2. ✅ **Enhanced GraphQL Queries**: Multiple case-sensitive search patterns
+3. ✅ **Fixed Sync Logic**: Preserve original totalSpend, populate store credit fields separately
+4. ✅ **Customer Page**: Added store credit columns and sync button
+5. ✅ **Loyalty Card Modal**: Shows spending breakdown with store credit details
+6. ✅ **TypeScript Fixes**: Regenerated Prisma client, fixed variable references
+7. ✅ **Build Verification**: Confirmed successful compilation and deployment
+
 **CRITICAL GRAPHQL FIELD BUG FIX - COMPLETED ✅**
 
 We successfully resolved a critical GraphQL field bug that was causing "Field 'totalSpent' doesn't exist" errors in both webhook processing and customer sync operations.
