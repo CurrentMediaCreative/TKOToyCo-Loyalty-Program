@@ -41,6 +41,8 @@ interface CustomerData {
   // Store credit tracking
   totalStoreCreditUsed?: number; // From database
   loyaltyEligibleSpend?: number; // From database
+  storeCreditUsed?: number; // Alternative field name from customer page
+  loyaltyEligibleSpending?: number; // Alternative field name from customer page
 
   // Tier information
   tier: string;
@@ -381,7 +383,7 @@ export function CustomerLoyaltyCard({
                       Store Credit Used
                     </Text>
                     <Text variant="headingMd" as="p">
-                      ${(customer.totalStoreCreditUsed || 0).toFixed(2)}
+                      ${(customer.storeCreditUsed || customer.totalStoreCreditUsed || 0).toFixed(2)}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
@@ -391,7 +393,7 @@ export function CustomerLoyaltyCard({
                       Loyalty-Eligible Spending
                     </Text>
                     <Text variant="headingMd" as="p">
-                      ${(customer.loyaltyEligibleSpend || Math.max(0, totalSpent - (customer.totalStoreCreditUsed || 0))).toFixed(2)}
+                      ${(customer.loyaltyEligibleSpending || customer.loyaltyEligibleSpend || Math.max(0, totalSpent - (customer.storeCreditUsed || customer.totalStoreCreditUsed || 0))).toFixed(2)}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>

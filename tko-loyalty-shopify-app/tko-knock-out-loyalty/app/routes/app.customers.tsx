@@ -350,9 +350,9 @@ export default function CustomersPage() {
       const bonusPoints = dbData?.bonusPoints || 0;
       const spendPoints = dbData?.spendPoints || Math.round(spentAmount);
 
-      // Store credit tracking data from database
-      const storeCreditUsed = dbData?.totalStoreCreditUsed || 0;
-      const loyaltyEligibleSpending = dbData?.loyaltyEligibleSpend || Math.max(0, spentAmount - storeCreditUsed);
+      // Store credit tracking data from database - convert Decimal to number
+      const storeCreditUsed = dbData?.totalStoreCreditUsed ? parseFloat(dbData.totalStoreCreditUsed.toString()) : 0;
+      const loyaltyEligibleSpending = dbData?.loyaltyEligibleSpend ? parseFloat(dbData.loyaltyEligibleSpend.toString()) : Math.max(0, spentAmount - storeCreditUsed);
 
       // Calculate tier using our points-based system
       const tier =
