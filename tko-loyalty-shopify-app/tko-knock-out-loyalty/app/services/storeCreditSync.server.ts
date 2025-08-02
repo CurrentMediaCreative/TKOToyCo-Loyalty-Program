@@ -275,23 +275,28 @@ export async function syncStoreCreditForAllCustomers(request: Request): Promise<
         const customer = customerDataResponse.data.customer;
         const originalSpend = parseFloat(customer.amountSpent.amount);
         const storeCreditUsed = customerData.totalCredit;
-        const correctedSpend = Math.max(0, originalSpend - storeCreditUsed);
-        const correctedPoints = Math.floor(correctedSpend); // 1 point per dollar
+        const loyaltyEligibleSpend = Math.max(0, originalSpend - storeCreditUsed);
+        const loyaltyEligiblePoints = Math.floor(loyaltyEligibleSpend); // 1 point per dollar of loyalty-eligible spending
         
-        console.log(`💰 ${customerData.customerName}: $${originalSpend} - $${storeCreditUsed} = $${correctedSpend} (${correctedPoints} points)`);
+        console.log(`💰 ${customerData.customerName}: Total Spend: $${originalSpend}, Store Credit Used: $${storeCreditUsed}, Loyalty-Eligible: $${loyaltyEligibleSpend} (${loyaltyEligiblePoints} points)`);
         
-        // Step 4: Update customer metafields in Shopify
-        await updateCustomerStoreCreditMetafields(admin, customerData.customerId, correctedSpend, storeCreditUsed);
+        // Step 4: Update customer metafields in Shopify (keep original spend, add store credit info)
+        await updateCustomerStoreCreditMetafields(admin, customerData.customerId, originalSpend, storeCreditUsed);
         
-        // Step 5: Update local database
+        // Step 5: Update local database - PRESERVE original totalSpend, populate store credit fields
         const customerIdNumeric = BigInt(customerData.customerId.replace('gid://shopify/Customer/', ''));
         
         await prisma.customer.upsert({
           where: { shopifyId: customerIdNumeric },
           update: {
-            totalSpend: correctedSpend,
-            totalPoints: correctedPoints,
-            spendPoints: correctedPoints,
+            // Keep original totalSpend from Shopify - DO NOT MODIFY
+            totalSpend: originalSpend,
+            // Populate store credit tracking fields (using Decimal type)
+            totalStoreCreditUsed: storeCreditUsed,
+            loyaltyEligibleSpend: loyaltyEligibleSpend,
+            // Update points based on loyalty-eligible spending only
+            spendPoints: loyaltyEligiblePoints,
+            totalPoints: loyaltyEligiblePoints, // Assuming no bonus points for now, will be recalculated if needed
             updatedAt: new Date()
           },
           create: {
@@ -300,9 +305,14 @@ export async function syncStoreCreditForAllCustomers(request: Request): Promise<
             emails: customerData.email ? [customerData.email] : [],
             firstName: customerData.customerName.split(' ')[0] || '',
             lastName: customerData.customerName.split(' ').slice(1).join(' ') || '',
-            totalSpend: correctedSpend,
-            totalPoints: correctedPoints,
-            spendPoints: correctedPoints,
+            // Keep original totalSpend from Shopify
+            totalSpend: originalSpend,
+            // Populate store credit tracking fields (using Decimal type)
+            totalStoreCreditUsed: storeCreditUsed,
+            loyaltyEligibleSpend: loyaltyEligibleSpend,
+            // Set points based on loyalty-eligible spending
+            spendPoints: loyaltyEligiblePoints,
+            totalPoints: loyaltyEligiblePoints,
             createdAt: new Date(),
             updatedAt: new Date()
           }
@@ -314,8 +324,8 @@ export async function syncStoreCreditForAllCustomers(request: Request): Promise<
           email: customerData.email,
           originalSpend,
           storeCreditUsed,
-          correctedSpend,
-          correctedPoints
+          correctedSpend: loyaltyEligibleSpend, // Use loyaltyEligibleSpend instead of undefined correctedSpend
+          correctedPoints: loyaltyEligiblePoints // Use loyaltyEligiblePoints instead of undefined correctedPoints
         });
         
         result.customersAffected++;
