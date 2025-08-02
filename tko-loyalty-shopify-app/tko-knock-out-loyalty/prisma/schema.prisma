@@ -72,6 +72,8 @@ model Customer {
   country       String?
   lastSyncAt    DateTime?          // Track when customer data was last synced
   isActive      Boolean            @default(true) // Active in last 30 days
+  totalStoreCreditUsed Decimal     @default(0.00) @db.Decimal(10, 2) // Total store credit used across all orders
+  loyaltyEligibleSpend Decimal     @default(0.00) @db.Decimal(10, 2) // Total spend minus store credit usage
   tier          Tier?              @relation(fields: [tierId], references: [id])
   transactions  PointTransaction[]
   pendingOrders PendingOrder[]
@@ -84,6 +86,8 @@ model Customer {
   @@index([lastSyncAt])
   @@index([isActive])
   @@index([numberOfOrders])
+  @@index([totalStoreCreditUsed])
+  @@index([loyaltyEligibleSpend])
   @@map("Customer")
 }
 
@@ -99,6 +103,7 @@ model Order {
   taxAmount         Decimal    @db.Decimal(10, 2)
   shippingAmount    Decimal    @db.Decimal(10, 2)
   discountAmount    Decimal    @db.Decimal(10, 2)
+  storeCreditUsed   Decimal    @default(0.00) @db.Decimal(10, 2) // Store credit used in this order
   
   // Status and fulfillment
   financialStatus   String     // paid, pending, refunded, etc.
@@ -133,6 +138,7 @@ model Order {
   @@index([financialStatus])
   @@index([fulfillmentStatus])
   @@index([totalAmount])
+  @@index([storeCreditUsed])
   @@map("Order")
 }
 
