@@ -38,6 +38,10 @@ interface CustomerData {
   bonusPoints?: number; // From database
   totalPoints?: number; // From database
 
+  // Store credit tracking
+  totalStoreCreditUsed?: number; // From database
+  loyaltyEligibleSpend?: number; // From database
+
   // Tier information
   tier: string;
 
@@ -364,10 +368,30 @@ export function CustomerLoyaltyCard({
                 <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                   <BlockStack gap="200">
                     <Text variant="headingSm" as="h4">
-                      Total Spent
+                      Total Spent (Shopify)
                     </Text>
                     <Text variant="headingMd" as="p">
                       {formattedSpent}
+                    </Text>
+                  </BlockStack>
+                </Grid.Cell>
+                <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
+                  <BlockStack gap="200">
+                    <Text variant="headingSm" as="h4">
+                      Store Credit Used
+                    </Text>
+                    <Text variant="headingMd" as="p">
+                      ${(customer.totalStoreCreditUsed || 0).toFixed(2)}
+                    </Text>
+                  </BlockStack>
+                </Grid.Cell>
+                <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
+                  <BlockStack gap="200">
+                    <Text variant="headingSm" as="h4">
+                      Loyalty-Eligible Spending
+                    </Text>
+                    <Text variant="headingMd" as="p">
+                      ${(customer.loyaltyEligibleSpend || Math.max(0, totalSpent - (customer.totalStoreCreditUsed || 0))).toFixed(2)}
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
@@ -381,6 +405,11 @@ export function CustomerLoyaltyCard({
                     </Text>
                   </BlockStack>
                 </Grid.Cell>
+              </Grid>
+
+              <Divider />
+
+              <Grid>
                 <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                   <BlockStack gap="200">
                     <Text variant="headingSm" as="h4">
@@ -400,6 +429,26 @@ export function CustomerLoyaltyCard({
                       {customer.consistency
                         ? `${customer.consistency}%`
                         : "Active"}
+                    </Text>
+                  </BlockStack>
+                </Grid.Cell>
+                <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
+                  <BlockStack gap="200">
+                    <Text variant="headingSm" as="h4">
+                      Spend Points
+                    </Text>
+                    <Text variant="headingMd" as="p">
+                      {Math.floor(customer.loyaltyEligibleSpend || Math.max(0, totalSpent - (customer.totalStoreCreditUsed || 0))).toLocaleString()}
+                    </Text>
+                  </BlockStack>
+                </Grid.Cell>
+                <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
+                  <BlockStack gap="200">
+                    <Text variant="headingSm" as="h4">
+                      Points Calculation
+                    </Text>
+                    <Text variant="headingMd" as="p">
+                      1 point per $1 spent
                     </Text>
                   </BlockStack>
                 </Grid.Cell>

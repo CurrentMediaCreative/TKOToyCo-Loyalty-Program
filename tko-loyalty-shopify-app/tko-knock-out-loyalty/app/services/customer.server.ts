@@ -15,6 +15,8 @@ type CustomerWithPoints = {
   spendPoints: number;
   bonusPoints: number;
   totalPoints: number;
+  totalStoreCreditUsed: number;
+  loyaltyEligibleSpend: number;
   tierId: string | null;
   tier?: any;
   metafieldId: string | null;

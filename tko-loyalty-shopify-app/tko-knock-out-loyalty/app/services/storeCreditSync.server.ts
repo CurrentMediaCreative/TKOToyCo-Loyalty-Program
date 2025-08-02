@@ -24,9 +24,10 @@ export interface StoreCreditSyncResult {
 }
 
 // GraphQL query to fetch orders with store credit notes
+// Using multiple queries to catch all case variations since Shopify GraphQL search is case-sensitive
 const ORDERS_WITH_STORE_CREDIT_QUERY = `
-  query OrdersWithStoreCredit($first: Int!, $after: String) {
-    orders(first: $first, after: $after, query: "note:'store credit used'") {
+  query OrdersWithStoreCredit($first: Int!, $after: String, $query: String!) {
+    orders(first: $first, after: $after, query: $query) {
       edges {
         cursor
         node {
@@ -150,6 +151,7 @@ export async function syncStoreCreditForAllCustomers(request: Request): Promise<
     console.log('🔍 Starting store credit sync - fetching all orders with store credit notes...');
     
     // Step 1: Paginate through all orders with store credit notes
+    // Use multiple search queries to catch all case variations since Shopify GraphQL search is case-sensitive
     const customerCredits: Record<string, {
       customerId: string;
       customerName: string;
@@ -158,67 +160,95 @@ export async function syncStoreCreditForAllCustomers(request: Request): Promise<
       orderCount: number;
     }> = {};
     
-    let cursor: string | null = null;
-    let hasNextPage = true;
+    // Define search queries to catch different case variations
+    const searchQueries = [
+      "note:'store credit used'",      // lowercase (original)
+      "note:'Store credit used'",      // Capital S (Eric Grier's case)
+      "note:'Store Credit Used'",      // Title Case
+      "note:'STORE CREDIT USED'",      // All caps
+      "note:'store credit'",           // Partial match lowercase
+      "note:'Store credit'",           // Partial match capital S
+      "note:'Store Credit'",           // Partial match title case
+    ];
     
-    while (hasNextPage) {
-      const response: any = await admin.graphql(ORDERS_WITH_STORE_CREDIT_QUERY, {
-        variables: {
-          first: 100,
-          after: cursor
-        }
-      });
+    const processedOrderIds = new Set<string>(); // Track processed orders to avoid duplicates
+    
+    // Process each search query
+    for (const searchQuery of searchQueries) {
+      console.log(`🔍 Searching with query: ${searchQuery}`);
       
-      const data: any = await response.json();
+      let cursor: string | null = null;
+      let hasNextPage = true;
       
-      if (data.errors) {
-        result.errors.push(`GraphQL error: ${JSON.stringify(data.errors)}`);
-        break;
-      }
-      
-      const orders = data.data.orders.edges;
-      
-      // Step 2: Parse store credit from each order
-      for (const edge of orders) {
-        const order = edge.node;
-        result.ordersProcessed++;
+      while (hasNextPage) {
+        const response: any = await admin.graphql(ORDERS_WITH_STORE_CREDIT_QUERY, {
+          variables: {
+            first: 100,
+            after: cursor,
+            query: searchQuery
+          }
+        });
         
-        if (!order.customer?.id) {
-          console.log(`⚠️ Order ${order.id} has no customer - skipping`);
-          continue;
+        const data: any = await response.json();
+        
+        if (data.errors) {
+          result.errors.push(`GraphQL error for query "${searchQuery}": ${JSON.stringify(data.errors)}`);
+          break;
         }
         
-        const customerId = order.customer.id;
-        const customerName = order.customer.displayName || 'Unknown';
-        const email = order.customer.email || '';
+        const orders = data.data.orders.edges;
         
-        // Parse store credit from note
-        const storeCreditInfo = parseStoreCreditFromNote(order.note, 0); // totalAmount not needed for parsing
-        
-        if (storeCreditInfo.hasStoreCredit && storeCreditInfo.storeCreditUsed > 0) {
-          if (!customerCredits[customerId]) {
-            customerCredits[customerId] = {
-              customerId,
-              customerName,
-              email,
-              totalCredit: 0,
-              orderCount: 0
-            };
+        // Step 2: Parse store credit from each order
+        for (const edge of orders) {
+          const order = edge.node;
+          
+          // Skip if we've already processed this order
+          if (processedOrderIds.has(order.id)) {
+            continue;
           }
           
-          customerCredits[customerId].totalCredit += storeCreditInfo.storeCreditUsed;
-          customerCredits[customerId].orderCount++;
-          result.totalStoreCreditFound += storeCreditInfo.storeCreditUsed;
+          processedOrderIds.add(order.id);
+          result.ordersProcessed++;
           
-          console.log(`💳 Found $${storeCreditInfo.storeCreditUsed} store credit for ${customerName} (${email})`);
+          if (!order.customer?.id) {
+            console.log(`⚠️ Order ${order.id} has no customer - skipping`);
+            continue;
+          }
+          
+          const customerId = order.customer.id;
+          const customerName = order.customer.displayName || 'Unknown';
+          const email = order.customer.email || '';
+          
+          // Parse store credit from note
+          const storeCreditInfo = parseStoreCreditFromNote(order.note, 0); // totalAmount not needed for parsing
+          
+          if (storeCreditInfo.hasStoreCredit && storeCreditInfo.storeCreditUsed > 0) {
+            if (!customerCredits[customerId]) {
+              customerCredits[customerId] = {
+                customerId,
+                customerName,
+                email,
+                totalCredit: 0,
+                orderCount: 0
+              };
+            }
+            
+            customerCredits[customerId].totalCredit += storeCreditInfo.storeCreditUsed;
+            customerCredits[customerId].orderCount++;
+            result.totalStoreCreditFound += storeCreditInfo.storeCreditUsed;
+            
+            console.log(`💳 Found $${storeCreditInfo.storeCreditUsed} store credit for ${customerName} (${email}) - Query: ${searchQuery}`);
+          }
+        }
+        
+        // Update pagination
+        hasNextPage = data.data.orders.pageInfo.hasNextPage;
+        cursor = data.data.orders.pageInfo.endCursor;
+        
+        if (orders.length > 0) {
+          console.log(`📦 Query "${searchQuery}": Processed ${orders.length} orders, ${result.ordersProcessed} total so far...`);
         }
       }
-      
-      // Update pagination
-      hasNextPage = data.data.orders.pageInfo.hasNextPage;
-      cursor = data.data.orders.pageInfo.endCursor;
-      
-      console.log(`📦 Processed ${result.ordersProcessed} orders so far...`);
     }
     
     console.log(`✅ Finished processing orders. Found ${Object.keys(customerCredits).length} customers with store credit usage.`);

@@ -27,6 +27,7 @@ import {
 import { adjustCustomerBonusPoints } from "../services/pointTransaction.server";
 import { getTiers } from "../services/tier.server";
 import { syncAllCustomers } from "../services/customerSync.server";
+import { syncStoreCreditForAllCustomers } from "../services/storeCreditSync.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 import { serializeBigInt } from "../utils/serialization";
 
@@ -83,6 +84,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return json({
           success: false,
           error: error instanceof Error ? error.message : "Customer sync failed"
+        });
+      }
+    }
+
+    if (action === "syncStoreCredit") {
+      try {
+        console.log("🔄 Starting store credit sync from admin interface...");
+        const result = await syncStoreCreditForAllCustomers(request);
+        
+        return json({
+          success: true,
+          syncResult: result,
+          message: `Store credit sync completed: ${result.ordersProcessed} orders processed, ${result.customersAffected} customers updated, $${result.totalStoreCreditFound.toFixed(2)} total store credit found.`
+        });
+      } catch (error) {
+        console.error("❌ Store credit sync failed:", error);
+        return json({
+          success: false,
+          error: error instanceof Error ? error.message : "Store credit sync failed"
         });
       }
     }
@@ -185,6 +205,7 @@ export default function CustomersPage() {
   const [bonusPointsValue, setBonusPointsValue] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingStoreCredit, setIsSyncingStoreCredit] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
@@ -329,6 +350,10 @@ export default function CustomersPage() {
       const bonusPoints = dbData?.bonusPoints || 0;
       const spendPoints = dbData?.spendPoints || Math.round(spentAmount);
 
+      // Store credit tracking data from database
+      const storeCreditUsed = dbData?.totalStoreCreditUsed || 0;
+      const loyaltyEligibleSpending = dbData?.loyaltyEligibleSpend || Math.max(0, spentAmount - storeCreditUsed);
+
       // Calculate tier using our points-based system
       const tier =
         dbData?.tier?.name ||
@@ -350,6 +375,8 @@ export default function CustomersPage() {
         bonusPoints,
         spendPoints,
         spentAmount,
+        storeCreditUsed,
+        loyaltyEligibleSpending,
         location,
         name:
           `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
@@ -539,6 +566,37 @@ export default function CustomersPage() {
     }
   };
 
+  // Handle store credit sync
+  const handleSyncStoreCredit = async () => {
+    setIsSyncingStoreCredit(true);
+    setSyncMessage(null);
+    setSyncError(null);
+
+    const formData = new FormData();
+    formData.append("action", "syncStoreCredit");
+
+    try {
+      const response = await fetch(window.location.pathname, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSyncMessage(result.message);
+        // Reload the page to show updated data
+        window.location.reload();
+      } else {
+        setSyncError(result.error || "Store credit sync failed");
+      }
+    } catch (error) {
+      setSyncError("Network error during store credit sync");
+    } finally {
+      setIsSyncingStoreCredit(false);
+    }
+  };
+
   const rowMarkup = currentCustomers.map((customer: any, index: number) => {
     const id = customer.id.replace("gid://shopify/Customer/", "");
 
@@ -603,6 +661,8 @@ export default function CustomersPage() {
           )}
         </IndexTable.Cell>
         <IndexTable.Cell>${customer.spentAmount.toFixed(2)}</IndexTable.Cell>
+        <IndexTable.Cell>${customer.storeCreditUsed.toFixed(2)}</IndexTable.Cell>
+        <IndexTable.Cell>${customer.loyaltyEligibleSpending.toFixed(2)}</IndexTable.Cell>
         <IndexTable.Cell>{customer.numberOfOrders || 0}</IndexTable.Cell>
         <IndexTable.Cell>{customer.location}</IndexTable.Cell>
         <IndexTable.Cell>
@@ -678,14 +738,24 @@ export default function CustomersPage() {
                   onClearButtonClick={() => setSearchValue("")}
                   autoComplete="off"
                 />
-                <Button
-                  variant="primary"
-                  onClick={handleSyncCustomers}
-                  loading={isSyncing}
-                  disabled={isSyncing}
-                >
-                  {isSyncing ? "Syncing..." : "Sync All Customers"}
-                </Button>
+                <InlineStack gap="200">
+                  <Button
+                    variant="secondary"
+                    onClick={handleSyncStoreCredit}
+                    loading={isSyncingStoreCredit}
+                    disabled={isSyncingStoreCredit || isSyncing}
+                  >
+                    {isSyncingStoreCredit ? "Syncing Store Credit..." : "Sync Store Credit"}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleSyncCustomers}
+                    loading={isSyncing}
+                    disabled={isSyncing || isSyncingStoreCredit}
+                  >
+                    {isSyncing ? "Syncing..." : "Sync All Customers"}
+                  </Button>
+                </InlineStack>
               </InlineStack>
             </div>
 
@@ -729,6 +799,8 @@ export default function CustomersPage() {
                 { title: `Total Points${getSortIndicator("points")}` },
                 { title: `Bonus Points${getSortIndicator("bonus")}` },
                 { title: `Total Spent${getSortIndicator("spent")}` },
+                { title: `Store Credit Used${getSortIndicator("storeCredit")}` },
+                { title: `Loyalty-Eligible${getSortIndicator("loyaltyEligible")}` },
                 { title: `Orders${getSortIndicator("orders")}` },
                 { title: `Location${getSortIndicator("location")}` },
                 { title: "Actions" },

@@ -14,7 +14,42 @@ The project follows strict context management rules defined in `.clinerules`:
 
 ## Current Work Focus
 
-We are implementing a points-based loyalty system for the TKO Toy Co Loyalty Program Shopify app. The app has been fully implemented as a Shopify integration, and we have made significant progress in transitioning from a spend-based to a points-based loyalty system.
+**CRITICAL GRAPHQL FIELD BUG FIX - COMPLETED ✅**
+
+We successfully resolved a critical GraphQL field bug that was causing "Field 'totalSpent' doesn't exist" errors in both webhook processing and customer sync operations.
+
+### Issue Resolution Summary:
+- **Root Cause**: Code was using non-existent `totalSpent` field in Shopify GraphQL API
+  - Correct field is `amountSpent { amount currencyCode }` (MoneyV2 object)
+  - `totalSpent` field doesn't exist in Shopify Admin GraphQL API (version 2025-07)
+- **Impact**: Customer sync failing with GraphQL errors, webhook processing broken
+- **Solution**: Updated all GraphQL queries to use correct `amountSpent` field structure
+
+### Completed Work:
+1. ✅ **Fixed webhook processor** (`webhooks.orders.create.tsx`)
+   - Updated GraphQL query from `totalSpent` to `amountSpent { amount currencyCode }`
+   - Updated data processing to use `amountSpent.amount` instead of `totalSpent`
+   - Fixed TypeScript interface to match MoneyV2 object structure
+   - **Status**: Committed and deployed to production
+
+2. ✅ **Fixed customer sync service** (`customerSync.server.ts`)
+   - Updated TypeScript interface to use `amountSpent` MoneyV2 object
+   - Fixed all GraphQL queries to use `amountSpent { amount currencyCode }`
+   - Updated data processing logic to extract `amount` from `amountSpent` object
+   - **Status**: Committed and deployed to production
+
+3. ✅ **Added customer sync UI** (`app.customers.tsx`)
+   - Added "Sync All Customers" button to customers page
+   - Implemented progress tracking and error handling
+   - Added success/error banners for user feedback
+   - **Status**: Committed and deployed to production
+
+### Deployment Status:
+- **Webhook Fix**: ✅ Deployed - stops new inflated data from being created
+- **Customer Sync**: ✅ Deployed - allows admins to correct existing inflated data
+- **All changes**: ✅ Pushed to GitHub and deployed to production
+
+The critical issue has been resolved and the system is now functioning correctly with proper customer spend tracking.
 
 ### Recently Completed
 
