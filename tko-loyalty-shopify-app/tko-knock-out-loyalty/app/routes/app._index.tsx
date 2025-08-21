@@ -45,7 +45,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   try {
     // Use the optimized dashboard metrics service
-    const dashboardData = await getDashboardMetrics(admin);
+    const dashboardResult = await getDashboardMetrics(admin);
+    
+    // Check if the service call was successful
+    if (!dashboardResult.success || !dashboardResult.data) {
+      throw new Error(dashboardResult.error || "Failed to load dashboard metrics");
+    }
+    
+    const dashboardData = dashboardResult.data;
     
     // Fetch all tiers with their benefits for the loyalty card
     const tiers = await getTiers();
