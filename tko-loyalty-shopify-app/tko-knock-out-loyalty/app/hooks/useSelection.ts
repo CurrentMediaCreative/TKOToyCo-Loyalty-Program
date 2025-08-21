@@ -110,15 +110,22 @@ export function useIndexTableSelection<T>(
 
   // Handle IndexTable selection change events - matches Shopify's expected signature
   const handleSelectionChange = useCallback(
-    (selectionType: any, toggleType: boolean, selection?: string | any, position?: number) => {
-      if (selectionType === 'all') {
-        if (toggleType) {
+    (selectionType: any, toggleType?: boolean, selection?: string | any, position?: number) => {
+      console.log('Selection change:', { selectionType, toggleType, selection, position });
+      
+      // Handle different selection types that Shopify IndexTable sends
+      if (selectionType === 'all' || selectionType === 'page') {
+        // toggleType true = select all, false = deselect all
+        if (toggleType === true) {
           selectionHook.selectAll();
         } else {
           selectionHook.clearSelection();
         }
       } else if (selectionType === 'single' && typeof selection === 'string') {
         selectionHook.toggleSelection(selection);
+      } else if (typeof selectionType === 'string') {
+        // Sometimes Shopify sends the ID directly as selectionType
+        selectionHook.toggleSelection(selectionType);
       }
     },
     [selectionHook]
