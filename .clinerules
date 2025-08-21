@@ -1,36 +1,47 @@
 # Cline Rules for TKO Toy Co Loyalty Program
 
-## Task Context Management
+## CRITICAL: Code-First Analysis Rules
 
-1. **Memory Bank First**: Always read ALL memory bank files at the start of EVERY task.
+1. **NEVER trust memory bank implementation details - Always verify with actual code**
 
-   - `projectbrief.md` - Core requirements and project scope
-   - `productContext.md` - Business context and user experience goals
-   - `systemPatterns.md` - Architecture and design patterns
-   - `techContext.md` - Technology stack and constraints
-   - `activeContext.md` - Current work focus and recent changes
-   - `progress.md` - Project status and known issues
+2. **ALWAYS start with these steps in order:**
+   - Read `ISSUES.md` for known problems and their current status
+   - Read `memory-bank/codebase-analysis-guide.md` for analysis workflow
+   - Check `tko-loyalty-shopify-app/tko-knock-out-loyalty/prisma/schema.prisma` for current data model
+   - Use `list_code_definition_names` to understand route and service structure
+   - Read actual implementation files with `read_file`
+   - Verify current state, don't assume from documentation
 
-2. **Task Transitions**: When completing one significant task and moving to another:
+3. **Memory Bank Files to Trust (High-Level Only):**
+   - `projectbrief.md` - Business requirements and project scope
+   - `productContext.md` - Business context and user experience goals  
+   - `codebase-analysis-guide.md` - How to analyze the codebase
+   - `.clinerules` - These workflow rules
 
-   - Update relevant memory bank files, especially `activeContext.md` and `progress.md`
-   - Use the `new_task` tool to create a new task with proper context
-   - Summarize completed work and pending items in the transition
+4. **Memory Bank Files to IGNORE for Implementation Details:**
+   - `systemPatterns.md` - May contain outdated architecture info
+   - `techContext.md` - May contain outdated technology details
+   - `activeContext.md` - May contain outdated current work info
+   - `progress.md` - May contain outdated completion status
 
-3. **Context Window Management**: Monitor and manage context window usage:
+5. **Before making assumptions about functionality:**
+   - Search codebase for actual implementation: `search_files app/ "pattern"`
+   - Check for TODO/FIXME/BUG comments in code
+   - Look for recent changes and fixes
+   - Verify error handling exists
 
+6. **Task Context Management**: Monitor and manage context window usage:
    - Regularly check context usage percentage in environment details
    - Create new task contexts at logical boundaries between work phases
    - Proactively suggest new task creation when usage exceeds 70-80%
    - Always create a new task after completing a major milestone
-   - Ensure memory bank files are updated before transitioning
+   - Update `ISSUES.md` before transitioning, not memory bank files
 
-4. **Context Preservation**: Maintain awareness of:
-   - Current project state
-   - Recent code changes
-   - Architectural decisions
-   - Implementation patterns
-   - Outstanding issues
+7. **Context Preservation**: Maintain awareness of:
+   - Current issues from `ISSUES.md`
+   - Actual code state from direct examination
+   - Recent fixes and their impact
+   - Outstanding problems and their priority
 
 ## Development Workflow
 
