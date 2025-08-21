@@ -2,6 +2,9 @@ import prisma from "../db.server";
 import { getTiers } from "./tier.server";
 import { updateCustomerTierMetafields } from "./metafields.server";
 import type { Admin } from "../types";
+import { logger } from "../utils/logger.server";
+import { withRetry, ServiceResult } from "../utils/errorHandler.server";
+import { measurePerformance } from "../utils/performance.server";
 
 // Define a type that includes the point fields
 type CustomerWithPoints = {
@@ -167,11 +170,18 @@ export async function createOrUpdateCustomer({
 
       // Check if the metafield update was skipped due to authentication issues
       if (metafieldResult?.skipped) {
-        console.log(
-          `⚠️ Metafield update skipped for customer ${shopifyId} (authentication issue - expected in webhook context)`,
-        );
+        logger.warn("Metafield update skipped for customer", {
+          operation: "createOrUpdateCustomer",
+          shopifyId,
+          reason: "authentication_issue",
+          context: "webhook_context"
+        });
       } else {
-        console.log(`✅ Updated metafields for customer ${shopifyId}`);
+        logger.info("Updated metafields for customer", {
+          operation: "createOrUpdateCustomer",
+          shopifyId,
+          success: true
+        });
       }
     } catch (error) {
       const errorMessage =
@@ -182,14 +192,19 @@ export async function createOrUpdateCustomer({
         errorMessage.includes("401") ||
         errorMessage.includes("Unauthorized")
       ) {
-        console.log(
-          `⚠️ Metafield update failed for customer ${shopifyId} due to authentication - this is expected in webhook context`,
-        );
+        logger.warn("Metafield update failed due to authentication", {
+          operation: "createOrUpdateCustomer",
+          shopifyId,
+          reason: "authentication_error",
+          context: "webhook_context",
+          expected: true
+        });
       } else {
-        console.error(
-          `❌ Failed to update metafields for customer ${shopifyId}:`,
-          errorMessage,
-        );
+        logger.error("Failed to update metafields for customer", {
+          operation: "createOrUpdateCustomer",
+          shopifyId,
+          error: errorMessage
+        });
       }
       // Don't throw the error - we still want to return the customer even if metafield update fails
     }
@@ -327,21 +342,32 @@ export async function updateCustomerTier(
   // If admin API context is provided and the customer has a tier, update their metafields
   if (admin && tierId) {
     try {
-      await updateCustomerTierMetafields(
-        admin,
-        Number(customer.shopifyId),
-        tierId,
-        customer.totalSpend,
-        customer.spendPoints,
-        customer.bonusPoints,
-        customer.totalPoints,
-      );
-      console.log(`Updated metafields for customer ${customer.shopifyId}`);
+      await withRetry(async () => {
+        return await updateCustomerTierMetafields(
+          admin,
+          Number(customer.shopifyId),
+          tierId,
+          customer.totalSpend,
+          customer.spendPoints,
+          customer.bonusPoints,
+          customer.totalPoints,
+        );
+      }, 3, 1000, { 
+        operation: "updateCustomerTier", 
+        additionalData: { shopifyId: customer.shopifyId.toString() }
+      });
+      
+      logger.info("Updated metafields for customer", {
+        operation: "updateCustomerTier",
+        shopifyId: customer.shopifyId,
+        tierId
+      });
     } catch (error) {
-      console.error(
-        `Failed to update metafields for customer ${customer.shopifyId}:`,
-        error,
-      );
+      logger.error("Failed to update metafields for customer", {
+        operation: "updateCustomerTier",
+        shopifyId: customer.shopifyId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       // Don't throw the error - we still want to return the customer even if metafield update fails
     }
   }
@@ -409,21 +435,33 @@ export async function updateCustomerBonusPoints(
   // If admin API context is provided, update their metafields
   if (admin && tierId) {
     try {
-      await updateCustomerTierMetafields(
-        admin,
-        Number(customer.shopifyId),
-        tierId,
-        customer.totalSpend,
-        customer.spendPoints,
-        customer.bonusPoints,
-        customer.totalPoints,
-      );
-      console.log(`Updated metafields for customer ${customer.shopifyId}`);
+      await withRetry(async () => {
+        return await updateCustomerTierMetafields(
+          admin,
+          Number(customer.shopifyId),
+          tierId,
+          customer.totalSpend,
+          customer.spendPoints,
+          customer.bonusPoints,
+          customer.totalPoints,
+        );
+      }, 3, 1000, { 
+        operation: "updateCustomerBonusPoints", 
+        additionalData: { shopifyId: customer.shopifyId.toString() }
+      });
+      
+      logger.info("Updated metafields for customer", {
+        operation: "updateCustomerBonusPoints",
+        shopifyId: customer.shopifyId,
+        bonusPoints,
+        tierId
+      });
     } catch (error) {
-      console.error(
-        `Failed to update metafields for customer ${customer.shopifyId}:`,
-        error,
-      );
+      logger.error("Failed to update metafields for customer", {
+        operation: "updateCustomerBonusPoints",
+        shopifyId: customer.shopifyId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       // Don't throw the error - we still want to return the customer even if metafield update fails
     }
   }

@@ -19,6 +19,8 @@ import {
   extractWebhookHeaders,
   validateWebhookTiming,
 } from "../utils/webhookSecurity";
+import { logger } from "../utils/logger.server";
+import { measurePerformance } from "../utils/performance.server";
 
 export interface WebhookProcessingResult {
   success: boolean;
@@ -65,9 +67,12 @@ export class WebhookProcessor {
     if (headers.triggeredAt) {
       const timing = validateWebhookTiming(headers.triggeredAt);
       if (timing.isDelayed) {
-        console.warn(
-          `⚠️ Processing delayed webhook (${timing.delayMinutes} minutes old)`,
-        );
+        logger.warn("Processing delayed webhook", {
+          operation: "WebhookProcessor",
+          eventId: this.context.eventId,
+          delayMinutes: timing.delayMinutes,
+          topic: this.context.topic
+        });
       }
     }
   }
@@ -85,7 +90,12 @@ export class WebhookProcessor {
       // Check for duplicate events
       const isDuplicate = await isDuplicateEvent(eventId);
       if (isDuplicate) {
-        console.log(`🔄 Skipping duplicate webhook event: ${eventId}`);
+        logger.info("Skipping duplicate webhook event", {
+          operation: "processWebhook",
+          eventId,
+          topic,
+          orderId: payload.id?.toString() || "unknown"
+        });
         return {
           success: true,
           orderId: payload.id?.toString() || "unknown",
@@ -107,19 +117,30 @@ export class WebhookProcessor {
         this.context.customerId,
       );
 
-      console.log(`🚀 Processing webhook ${topic} - Event ID: ${eventId}`);
-      console.log(
-        `📦 Order ID: ${this.context.orderId}, Customer ID: ${this.context.customerId}`,
-      );
+      logger.info("Processing webhook", {
+        operation: "processWebhook",
+        topic,
+        eventId,
+        orderId: this.context.orderId,
+        customerId: this.context.customerId
+      });
 
       // Process the webhook
-      const result = await processor(this.admin);
+      const result = await measurePerformance(async () => {
+        return await processor(this.admin);
+      }, `webhook-${topic}`);
 
       // Mark as completed
       await markEventCompleted(eventId, result);
 
       const processingTime = Date.now() - this.startTime;
-      console.log(`✅ Webhook processed successfully in ${processingTime}ms`);
+      logger.info("Webhook processed successfully", {
+        operation: "processWebhook",
+        topic,
+        eventId,
+        processingTime,
+        orderId: this.context.orderId
+      });
 
       return {
         success: true,
@@ -136,10 +157,14 @@ export class WebhookProcessor {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
-      console.error(
-        `❌ Webhook processing failed after ${processingTime}ms:`,
-        error,
-      );
+      logger.error("Webhook processing failed", {
+        operation: "processWebhook",
+        topic,
+        eventId,
+        processingTime,
+        orderId: this.context.orderId,
+        error: errorMessage
+      });
 
       return {
         success: false,
@@ -233,16 +258,16 @@ export class WebhookProcessor {
     const orderAmount = parseFloat(payload.total_price || "0");
     const customerInfo = this.getCustomerInfo(payload.customer);
 
-    console.log(`📦 Order: ${orderName} ($${orderAmount.toFixed(2)})`);
-    console.log(
-      `👤 Customer: ${customerInfo.name} (${customerInfo.email}) - ID: ${customerInfo.id}`,
-    );
-    console.log(
-      `🏪 Fulfillment Status: ${payload.fulfillment_status || "unfulfilled"}`,
-    );
-    console.log(
-      `💳 Financial Status: ${payload.financial_status || "unknown"}`,
-    );
+    logger.info("Order details", {
+      operation: "logOrderDetails",
+      orderName,
+      orderAmount,
+      customerName: customerInfo.name,
+      customerEmail: customerInfo.email,
+      customerId: customerInfo.id,
+      fulfillmentStatus: payload.fulfillment_status || "unfulfilled",
+      financialStatus: payload.financial_status || "unknown"
+    });
   }
 }
 
@@ -285,13 +310,23 @@ export class WebhookPerformanceMonitor {
     const performance = this.checkPerformance(processingTime);
 
     if (performance.message) {
-      console.warn(performance.message);
+      logger.warn("Webhook performance threshold exceeded", {
+        operation: "logPerformance",
+        topic,
+        message: performance.message,
+        processingTime,
+        success
+      });
     }
 
-    console.log(`📊 Webhook Performance - ${topic}:`);
-    console.log(`   ⏱️  Processing Time: ${processingTime}ms`);
-    console.log(`   ✅ Success: ${success}`);
-    console.log(`   🎯 Within Threshold: ${performance.isWithinThreshold}`);
+    logger.info("Webhook performance metrics", {
+      operation: "logPerformance",
+      topic,
+      processingTime,
+      success,
+      withinThreshold: performance.isWithinThreshold,
+      shouldWarn: performance.shouldWarn
+    });
   }
 }
 

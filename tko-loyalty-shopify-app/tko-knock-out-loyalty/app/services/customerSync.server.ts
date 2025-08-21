@@ -1,5 +1,8 @@
 import prisma from "../db.server";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
+import { logger } from "../utils/logger.server";
+import { withRetry, ServiceResult, ErrorCodes } from "../utils/errorHandler.server";
+import { trackBatchPerformance } from "../utils/performance.server";
 
 interface ShopifyCustomer {
   id: string;
@@ -44,13 +47,13 @@ export class CustomerSyncService {
 
   /**
    * Sync all customers from Shopify to local database
-   * Uses cursor-based pagination with safety limits
+   * Uses cursor-based pagination with safety limits and enhanced error handling
    */
-  async syncAllCustomers(options: SyncOptions = {}): Promise<{
+  async syncAllCustomers(options: SyncOptions = {}): Promise<ServiceResult<{
     synced: number;
     errors: number;
     duration: number;
-  }> {
+  }>> {
     const startTime = Date.now();
     const { batchSize = 250, maxPages = 50 } = options;
 
@@ -60,13 +63,27 @@ export class CustomerSyncService {
     let cursor: string | null = null;
     let pageCount = 0;
 
-    console.log(
-      `Starting customer sync with batch size: ${batchSize}, max pages: ${maxPages}`,
-    );
-
     try {
+      logger.info("Starting customer sync operation", {
+        operation: "syncAllCustomers",
+        batchSize,
+        maxPages,
+        timestamp: new Date().toISOString()
+      });
+
       while (hasNextPage && pageCount < maxPages) {
-        try {
+        const pageStartTime = Date.now();
+        pageCount++;
+
+        logger.debug("Processing customer sync page", {
+          operation: "syncAllCustomers",
+          pageNumber: pageCount,
+          maxPages,
+          cursor,
+          batchSize
+        });
+
+        const pageResult = await withRetry(async () => {
           const queryVariables: {
             first: number;
             after?: string;
@@ -119,34 +136,56 @@ export class CustomerSyncService {
             { variables: queryVariables },
           );
 
-          const responseJson = await response.json();
-          const customersData = responseJson.data?.customers;
+          const responseJson: any = await response.json();
 
-          if (!customersData) {
-            console.error("No customer data returned from API");
-            break;
+          if (responseJson.errors && responseJson.errors.length > 0) {
+            throw new Error(`GraphQL errors in customer sync: ${JSON.stringify(responseJson.errors)}`);
           }
 
+          if (!responseJson.data?.customers) {
+            throw new Error("No customer data returned from Shopify API");
+          }
+
+          return responseJson.data.customers;
+        }, 3, 1000, { 
+          operation: "syncAllCustomers", 
+          additionalData: { pageNumber: pageCount, batchSize }
+        });
+
+        if (pageResult.success && pageResult.data) {
           // Process customers in batch
-          const customers = customersData.edges.map((edge: any) => edge.node);
+          const customers = pageResult.data.edges.map((edge: any) => edge.node);
           const batchResult = await this.processBatchCustomers(customers);
 
           syncedCount += batchResult.synced;
           errorCount += batchResult.errors;
 
           // Update pagination info
-          hasNextPage = customersData.pageInfo.hasNextPage;
-          cursor = customersData.pageInfo.endCursor;
-          pageCount++;
+          hasNextPage = pageResult.data.pageInfo.hasNextPage;
+          cursor = pageResult.data.pageInfo.endCursor;
 
-          console.log(
-            `Synced page ${pageCount}: ${batchResult.synced} customers, ${batchResult.errors} errors. Total: ${syncedCount}`,
-          );
+          const pageDuration = Date.now() - pageStartTime;
+          logger.info("Customer sync page completed", {
+            operation: "syncAllCustomers",
+            pageNumber: pageCount,
+            customersInPage: customers.length,
+            synced: batchResult.synced,
+            errors: batchResult.errors,
+            totalSynced: syncedCount,
+            totalErrors: errorCount,
+            duration: pageDuration,
+            throughput: Math.round((customers.length / pageDuration) * 1000),
+            hasNextPage
+          });
 
           // Small delay to prevent overwhelming the API
           await new Promise((resolve) => setTimeout(resolve, 100));
-        } catch (pageError) {
-          console.error(`Error processing page ${pageCount + 1}:`, pageError);
+        } else {
+          logger.error("Customer sync page failed", {
+            operation: "syncAllCustomers",
+            pageNumber: pageCount,
+            error: pageResult.error
+          });
           errorCount++;
           break;
         }
@@ -156,14 +195,43 @@ export class CustomerSyncService {
       await this.updateLastSyncTimestamp();
 
       const duration = Date.now() - startTime;
-      console.log(
-        `Customer sync completed: ${syncedCount} synced, ${errorCount} errors, ${duration}ms`,
-      );
+      
+      logger.info("Customer sync operation completed", {
+        operation: "syncAllCustomers",
+        totalSynced: syncedCount,
+        totalErrors: errorCount,
+        pagesProcessed: pageCount,
+        duration,
+        throughput: Math.round((syncedCount / duration) * 1000),
+        batchSize,
+        maxPages
+      });
 
-      return { synced: syncedCount, errors: errorCount, duration };
+      // Track performance metrics
+      trackBatchPerformance(batchSize, duration, syncedCount, errorCount);
+
+      return {
+        success: true,
+        data: { synced: syncedCount, errors: errorCount, duration }
+      };
+
     } catch (error) {
-      console.error("Fatal error in customer sync:", error);
-      throw error;
+      const duration = Date.now() - startTime;
+      
+      logger.error("Customer sync operation failed", {
+        operation: "syncAllCustomers",
+        error: error instanceof Error ? error.message : String(error),
+        syncedCount,
+        errorCount,
+        pageCount,
+        duration
+      });
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error occurred",
+        code: "CUSTOMER_SYNC_FAILED"
+      };
     }
   }
 
@@ -182,7 +250,11 @@ export class CustomerSyncService {
         await this.upsertCustomer(customer);
         synced++;
       } catch (error) {
-        console.error(`Error syncing customer ${customer.id}:`, error);
+        logger.error("Error syncing customer", {
+          operation: "processBatchCustomers",
+          customerId: customer.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
         errors++;
       }
     }
@@ -315,7 +387,11 @@ export class CustomerSyncService {
     const since = new Date();
     since.setHours(since.getHours() - hoursBack);
 
-    console.log(`Syncing customers updated since: ${since.toISOString()}`);
+    logger.info("Starting recent customer sync", {
+      operation: "syncRecentCustomers",
+      hoursBack,
+      since: since.toISOString()
+    });
 
     let syncedCount = 0;
     let errorCount = 0;
@@ -391,16 +467,26 @@ export class CustomerSyncService {
         hasNextPage = customersData.pageInfo.hasNextPage;
         cursor = customersData.pageInfo.endCursor;
 
-        console.log(
-          `Recent sync batch: ${batchResult.synced} synced, ${batchResult.errors} errors`,
-        );
+        logger.info("Recent sync batch completed", {
+          operation: "syncRecentCustomers",
+          synced: batchResult.synced,
+          errors: batchResult.errors,
+          totalSynced: syncedCount,
+          totalErrors: errorCount,
+          hasNextPage
+        });
       }
 
       await this.updateLastSyncTimestamp();
 
       return { synced: syncedCount, errors: errorCount };
     } catch (error) {
-      console.error("Error in recent customer sync:", error);
+      logger.error("Error in recent customer sync", {
+        operation: "syncRecentCustomers",
+        error: error instanceof Error ? error.message : String(error),
+        syncedCount,
+        errorCount
+      });
       throw error;
     }
   }
@@ -443,15 +529,25 @@ export class CustomerSyncService {
       const customer = responseJson.data?.customer;
 
       if (!customer) {
-        console.error(`Customer ${shopifyId} not found in Shopify`);
+        logger.error("Customer not found in Shopify", {
+          operation: "syncCustomerById",
+          shopifyId
+        });
         return false;
       }
 
       await this.upsertCustomer(customer);
-      console.log(`Successfully synced customer ${shopifyId}`);
+      logger.info("Successfully synced customer", {
+        operation: "syncCustomerById",
+        shopifyId
+      });
       return true;
     } catch (error) {
-      console.error(`Error syncing customer ${shopifyId}:`, error);
+      logger.error("Error syncing customer by ID", {
+        operation: "syncCustomerById",
+        shopifyId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return false;
     }
   }

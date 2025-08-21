@@ -1,6 +1,9 @@
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import prisma from "../db.server";
 import { getCustomerTier } from "./tier.server";
+import { logger } from "../utils/logger.server";
+import { withRetry, ServiceResult } from "../utils/errorHandler.server";
+import { measurePerformance } from "../utils/performance.server";
 
 /**
  * Dashboard Metrics Service - FULLY OPTIMIZED for Database Cache
@@ -62,107 +65,148 @@ interface CustomerSpender {
  */
 export async function getDashboardMetrics(
   admin: AdminApiContext,
-): Promise<DashboardMetrics> {
-  try {
-    console.log("🚀 Starting CACHED dashboard metrics calculation...");
-    const startTime = Date.now();
+): Promise<ServiceResult<DashboardMetrics>> {
+  return await measurePerformance(async () => {
+    try {
+      logger.info("Starting dashboard metrics calculation", {
+        operation: "getDashboardMetrics",
+        timestamp: new Date().toISOString()
+      });
 
-    // Calculate EST timezone dates for filtering
-    const { todayStart, todayEnd, monthStart, thirtyDaysAgo } =
-      calculateESTDateRanges();
+      // Calculate EST timezone dates for filtering
+      const { todayStart, todayEnd, monthStart, thirtyDaysAgo } =
+        calculateESTDateRanges();
 
-    console.log("📅 EST Date ranges calculated:", {
-      today: `${todayStart.toISOString()} to ${todayEnd.toISOString()}`,
-      month: `${monthStart.toISOString()} to now`,
-      thirtyDaysAgo: thirtyDaysAgo.toISOString(),
-    });
+      logger.debug("EST date ranges calculated", {
+        operation: "getDashboardMetrics",
+        dateRanges: {
+          today: `${todayStart.toISOString()} to ${todayEnd.toISOString()}`,
+          month: `${monthStart.toISOString()} to now`,
+          thirtyDaysAgo: thirtyDaysAgo.toISOString()
+        }
+      });
 
-    // Execute ALL queries from database cache in parallel - NO API CALLS!
-    const [allCustomers, tierCounts, totalSpent, monthSpending, yearSpending] =
-      await Promise.all([
-        // Get all customers from database with their cached data
-        prisma.customer.findMany({
-          select: {
-            id: true,
-            shopifyId: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            totalSpend: true,
-            totalPoints: true,
-            bonusPoints: true,
-            spendPoints: true,
-            numberOfOrders: true,
-            lastOrderDate: true,
-            createdAt: true,
-            shopifyCreatedAt: true,
-            tags: true,
-            tier: {
-              select: { name: true },
-            },
-          },
-        }),
+      // Execute ALL queries from database cache in parallel - NO API CALLS!
+      const [allCustomers, tierCounts, totalSpent, monthSpending, yearSpending] =
+        await Promise.all([
+          // Get all customers from database with their cached data
+          withRetry(async () => {
+            return await prisma.customer.findMany({
+              select: {
+                id: true,
+                shopifyId: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                totalSpend: true,
+                totalPoints: true,
+                bonusPoints: true,
+                spendPoints: true,
+                numberOfOrders: true,
+                lastOrderDate: true,
+                createdAt: true,
+                shopifyCreatedAt: true,
+                tags: true,
+                tier: {
+                  select: { name: true },
+                },
+              },
+            });
+          }, 3, 1000, { 
+            operation: "getDashboardMetrics", 
+            additionalData: { step: "fetchCustomers" }
+          }),
 
-        // Calculate tier distribution from database
-        calculateTierDistributionFromDB(),
+          // Calculate tier distribution from database
+          calculateTierDistributionFromDB(),
 
-        // Calculate revenue totals from database
-        calculateTotalRevenueFromDB(),
-        calculateMonthRevenueFromDB(monthStart),
-        calculateYearRevenueFromDB(),
+          // Calculate revenue totals from database
+          calculateTotalRevenueFromDB(),
+          calculateMonthRevenueFromDB(monthStart),
+          calculateYearRevenueFromDB(),
+        ]);
+
+      if (!allCustomers.success || !allCustomers.data) {
+        throw new Error(`Failed to fetch customers: ${allCustomers.error}`);
+      }
+
+      const customers = allCustomers.data;
+
+      logger.info("Database queries completed", {
+        operation: "getDashboardMetrics",
+        customerCount: customers.length,
+        totalSpent,
+        monthSpending,
+        yearSpending
+      });
+
+      // Process customers for daily and monthly leaderboards using cached data
+      const [dailyTopSpenders, monthlyTopSpenders] = await Promise.all([
+        calculateTopSpendersFromDB(todayStart, todayEnd, "daily"),
+        calculateTopSpendersFromDB(monthStart, new Date(), "monthly")
       ]);
 
-    console.log(
-      `📊 Loaded ${allCustomers.length} customers from database cache`,
-    );
+      // Calculate metrics from cached data
+      const activeCustomers = customers.filter(
+        (customer) =>
+          customer.lastOrderDate && customer.lastOrderDate >= thirtyDaysAgo,
+      ).length;
 
-    // Process customers for daily and monthly leaderboards using cached data
-    const dailyTopSpenders = await calculateTopSpendersFromDB(
-      todayStart,
-      todayEnd,
-      "daily",
-    );
-    const monthlyTopSpenders = await calculateTopSpendersFromDB(
-      monthStart,
-      new Date(),
-      "monthly",
-    );
+      // Calculate real growth metrics from database
+      const [customerGrowth, spendingGrowth] = await Promise.all([
+        calculateCustomerGrowth(),
+        calculateSpendingGrowth()
+      ]);
 
-    // Calculate metrics from cached data
-    const activeCustomers = allCustomers.filter(
-      (customer) =>
-        customer.lastOrderDate && customer.lastOrderDate >= thirtyDaysAgo,
-    ).length;
+      logger.info("Dashboard metrics calculation completed", {
+        operation: "getDashboardMetrics",
+        metrics: {
+          totalCustomers: customers.length,
+          activeCustomers,
+          totalSpent: totalSpent.toFixed(2),
+          monthSpending: monthSpending.toFixed(2),
+          yearSpending: yearSpending.toFixed(2),
+          topTierCustomers: tierCounts["Reigning Champion"] || 0,
+          customerGrowth: customerGrowth.toFixed(1),
+          spendingGrowth: spendingGrowth.toFixed(1)
+        }
+      });
 
-    // Calculate real growth metrics from database
-    const customerGrowth = await calculateCustomerGrowth();
-    const spendingGrowth = await calculateSpendingGrowth();
+      const dashboardMetrics: DashboardMetrics = {
+        stats: {
+          totalCustomers: customers.length,
+          activeCustomers,
+          totalSpent: totalSpent.toFixed(2),
+          monthSpending: monthSpending.toFixed(2),
+          yearSpending: yearSpending.toFixed(2),
+          currentYear: new Date().getFullYear(),
+          topTierCustomers: tierCounts["Reigning Champion"] || 0,
+          customerGrowth: customerGrowth.toFixed(1),
+          spendingGrowth: spendingGrowth.toFixed(1),
+        },
+        tierCounts,
+        todayCompetitors: dailyTopSpenders.slice(0, 5), // Top 5 daily
+        monthCompetitors: monthlyTopSpenders.slice(0, 5), // Top 5 monthly
+      };
 
-    const endTime = Date.now();
-    console.log(
-      `✅ CACHED dashboard metrics calculated in ${endTime - startTime}ms (NO API CALLS!)`,
-    );
+      return {
+        success: true,
+        data: dashboardMetrics
+      };
 
-    return {
-      stats: {
-        totalCustomers: allCustomers.length,
-        activeCustomers,
-        totalSpent: totalSpent.toFixed(2),
-        monthSpending: monthSpending.toFixed(2),
-        yearSpending: yearSpending.toFixed(2),
-        currentYear: new Date().getFullYear(),
-        topTierCustomers: tierCounts["Reigning Champion"] || 0,
-        customerGrowth: customerGrowth.toFixed(1),
-        spendingGrowth: spendingGrowth.toFixed(1),
-      },
-      tierCounts,
-      todayCompetitors: dailyTopSpenders.slice(0, 5), // Top 5 daily
-      monthCompetitors: monthlyTopSpenders.slice(0, 5), // Top 5 monthly
-    };
-  } catch (error) {
-    console.error("❌ Dashboard metrics error:", error);
-    throw error;
-  }
+    } catch (error) {
+      logger.error("Dashboard metrics calculation failed", {
+        operation: "getDashboardMetrics",
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error occurred",
+        code: "DASHBOARD_METRICS_FAILED"
+      };
+    }
+  }, "getDashboardMetrics");
 }
 
 /**
@@ -205,7 +249,9 @@ function calculateESTDateRanges() {
 async function calculateTierDistributionFromDB(): Promise<
   Record<string, number>
 > {
-  console.log("🎯 Calculating tier distribution from database...");
+  logger.info("Calculating tier distribution from database", {
+    operation: "calculateTierDistributionFromDB"
+  });
 
   const tierCounts: Record<string, number> = {
     Featherweight: 0,
@@ -223,7 +269,10 @@ async function calculateTierDistributionFromDB(): Promise<
       },
     });
 
-    console.log(`📊 Processing ${customers.length} customers from database`);
+    logger.info("Processing customers for tier distribution", {
+      operation: "calculateTierDistributionFromDB",
+      customerCount: customers.length
+    });
 
     // Calculate tier for each customer using our points system
     for (const customer of customers) {
@@ -234,14 +283,18 @@ async function calculateTierDistributionFromDB(): Promise<
       }
     }
 
-    console.log("✅ Tier distribution calculated:", {
+    logger.info("Tier distribution calculated successfully", {
+      operation: "calculateTierDistributionFromDB",
       totalProcessed: customers.length,
-      tierCounts,
+      tierCounts
     });
 
     return tierCounts;
   } catch (error) {
-    console.error("❌ Error calculating tier distribution:", error);
+    logger.error("Error calculating tier distribution", {
+      operation: "calculateTierDistributionFromDB",
+      error: error instanceof Error ? error.message : String(error)
+    });
     return tierCounts;
   }
 }
@@ -263,7 +316,10 @@ async function calculateTotalRevenueFromDB(): Promise<number> {
     const totalAmount = result._sum.totalAmount;
     return totalAmount ? parseFloat(totalAmount.toString()) : 0;
   } catch (error) {
-    console.error("❌ Error calculating total revenue:", error);
+    logger.error("Error calculating total revenue", {
+      operation: "calculateTotalRevenueFromDB",
+      error: error instanceof Error ? error.message : String(error)
+    });
     return 0;
   }
 }
@@ -289,7 +345,11 @@ async function calculateMonthRevenueFromDB(monthStart: Date): Promise<number> {
     const totalAmount = result._sum.totalAmount;
     return totalAmount ? parseFloat(totalAmount.toString()) : 0;
   } catch (error) {
-    console.error("❌ Error calculating month revenue:", error);
+    logger.error("Error calculating month revenue", {
+      operation: "calculateMonthRevenueFromDB",
+      monthStart: monthStart.toISOString(),
+      error: error instanceof Error ? error.message : String(error)
+    });
     return 0;
   }
 }
@@ -318,7 +378,10 @@ async function calculateYearRevenueFromDB(): Promise<number> {
     const totalAmount = result._sum.totalAmount;
     return totalAmount ? parseFloat(totalAmount.toString()) : 0;
   } catch (error) {
-    console.error("❌ Error calculating year revenue:", error);
+    logger.error("Error calculating year revenue", {
+      operation: "calculateYearRevenueFromDB",
+      error: error instanceof Error ? error.message : String(error)
+    });
     return 0;
   }
 }
@@ -332,7 +395,14 @@ async function calculateTopSpendersFromDB(
   period: string,
 ): Promise<CustomerSpender[]> {
   try {
-    console.log(`🏆 Calculating ${period} top spenders from database...`);
+    logger.info("Calculating top spenders from database", {
+      operation: "calculateTopSpendersFromDB",
+      period,
+      dateRange: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+      }
+    });
 
     // Get orders for the period with customer data
     const orders = await prisma.order.findMany({
@@ -423,7 +493,11 @@ async function calculateTopSpendersFromDB(
           customer.tier = await getCustomerTier(dbCustomer.totalPoints || 0);
         }
       } catch (error) {
-        console.warn(`Failed to get tier for customer ${customer.id}:`, error);
+        logger.warn("Failed to get tier for customer", {
+          operation: "calculateTopSpendersFromDB",
+          customerId: customer.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
       }
     }
 
@@ -431,13 +505,19 @@ async function calculateTopSpendersFromDB(
       (a, b) => b.periodSpending - a.periodSpending,
     );
 
-    console.log(
-      `✅ ${period} top spenders calculated: ${sortedCustomers.length} customers`,
-    );
+    logger.info("Top spenders calculated successfully", {
+      operation: "calculateTopSpendersFromDB",
+      period,
+      customerCount: sortedCustomers.length
+    });
 
     return sortedCustomers;
   } catch (error) {
-    console.error(`❌ Error calculating ${period} top spenders:`, error);
+    logger.error("Error calculating top spenders", {
+      operation: "calculateTopSpendersFromDB",
+      period,
+      error: error instanceof Error ? error.message : String(error)
+    });
     return [];
   }
 }
@@ -474,9 +554,10 @@ async function calculateCustomerGrowth(): Promise<number> {
     const compareDay = Math.min(currentDay, daysInPrevMonth);
     const lastMonthEnd = new Date(prevYear, adjustedPrevMonth, compareDay + 1);
 
-    console.log(`📊 Customer Growth Comparison (using Shopify join dates):`, {
+    logger.info("Customer growth comparison using Shopify join dates", {
+      operation: "calculateCustomerGrowth",
       currentPeriod: `${thisMonthStart.toISOString().split("T")[0]} to ${new Date(thisMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
-      previousPeriod: `${lastMonthStart.toISOString().split("T")[0]} to ${new Date(lastMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
+      previousPeriod: `${lastMonthStart.toISOString().split("T")[0]} to ${new Date(lastMonthEnd.getTime() - 1).toISOString().split("T")[0]}`
     });
 
     // Use shopifyCreatedAt if available, otherwise fall back to createdAt
@@ -521,16 +602,15 @@ async function calculateCustomerGrowth(): Promise<number> {
       }),
     ]);
 
-    console.log(`📊 Customer Growth Results:`, {
+    const growth = lastMonthCustomers === 0
+      ? thisMonthCustomers > 0 ? 100 : 0
+      : ((thisMonthCustomers - lastMonthCustomers) / lastMonthCustomers) * 100;
+
+    logger.info("Customer growth results calculated", {
+      operation: "calculateCustomerGrowth",
       thisMonthCustomers,
       lastMonthCustomers,
-      growth:
-        lastMonthCustomers === 0
-          ? thisMonthCustomers > 0
-            ? 100
-            : 0
-          : ((thisMonthCustomers - lastMonthCustomers) / lastMonthCustomers) *
-            100,
+      growth
     });
 
     // Improved growth calculation to handle edge cases
@@ -541,7 +621,10 @@ async function calculateCustomerGrowth(): Promise<number> {
       ((thisMonthCustomers - lastMonthCustomers) / lastMonthCustomers) * 100
     );
   } catch (error) {
-    console.error("❌ Error calculating customer growth:", error);
+    logger.error("Error calculating customer growth", {
+      operation: "calculateCustomerGrowth",
+      error: error instanceof Error ? error.message : String(error)
+    });
     return 0;
   }
 }
@@ -577,9 +660,10 @@ async function calculateSpendingGrowth(): Promise<number> {
     const compareDay = Math.min(currentDay, daysInPrevMonth);
     const lastMonthEnd = new Date(prevYear, adjustedPrevMonth, compareDay + 1);
 
-    console.log(`📊 Spending Growth Comparison:`, {
+    logger.info("Spending growth comparison", {
+      operation: "calculateSpendingGrowth",
       currentPeriod: `${thisMonthStart.toISOString().split("T")[0]} to ${new Date(thisMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
-      previousPeriod: `${lastMonthStart.toISOString().split("T")[0]} to ${new Date(lastMonthEnd.getTime() - 1).toISOString().split("T")[0]}`,
+      previousPeriod: `${lastMonthStart.toISOString().split("T")[0]} to ${new Date(lastMonthEnd.getTime() - 1).toISOString().split("T")[0]}`
     });
 
     // Calculate revenue for each period from fulfilled orders
@@ -616,15 +700,15 @@ async function calculateSpendingGrowth(): Promise<number> {
       lastRevenue._sum.totalAmount?.toString() || "0",
     );
 
-    console.log(`📊 Spending Growth Results:`, {
+    const growth = lastSpending === 0
+      ? currentSpending > 0 ? 100 : 0
+      : ((currentSpending - lastSpending) / lastSpending) * 100;
+
+    logger.info("Spending growth results calculated", {
+      operation: "calculateSpendingGrowth",
       currentSpending,
       lastSpending,
-      growth:
-        lastSpending === 0
-          ? currentSpending > 0
-            ? 100
-            : 0
-          : ((currentSpending - lastSpending) / lastSpending) * 100,
+      growth
     });
 
     // Improved growth calculation to handle edge cases
@@ -633,7 +717,10 @@ async function calculateSpendingGrowth(): Promise<number> {
     }
     return ((currentSpending - lastSpending) / lastSpending) * 100;
   } catch (error) {
-    console.error("❌ Error calculating spending growth:", error);
+    logger.error("Error calculating spending growth", {
+      operation: "calculateSpendingGrowth",
+      error: error instanceof Error ? error.message : String(error)
+    });
     return 0;
   }
 }

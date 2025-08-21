@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useIndexTableSelection } from "../hooks/useSelection";
+import { debugLog, logError } from "../utils/logger.server.js";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useSubmit } from "@remix-run/react";
@@ -71,16 +73,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     if (action === "syncAllCustomers") {
       try {
-        console.log("🔄 Starting customer sync from admin interface...");
+        debugLog("Starting customer sync from admin interface");
         const result = await syncAllCustomers(admin);
         
-        return json({
-          success: true,
-          syncResult: result,
-          message: `Successfully synced ${result.synced} customers in ${result.duration}ms. ${result.errors} errors.`
-        });
+        if (result.success && result.data) {
+          return json({
+            success: true,
+            syncResult: result.data,
+            message: `Successfully synced ${result.data.synced} customers in ${result.data.duration}ms. ${result.data.errors} errors.`
+          });
+        } else {
+          return json({
+            success: false,
+            error: result.error || "Customer sync failed"
+          });
+        }
       } catch (error) {
-        console.error("❌ Customer sync failed:", error);
+        logError(error instanceof Error ? error : new Error(String(error)), {
+          operation: 'syncAllCustomers',
+          source: 'admin-interface'
+        });
         return json({
           success: false,
           error: error instanceof Error ? error.message : "Customer sync failed"
@@ -90,7 +102,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     if (action === "syncStoreCredit") {
       try {
-        console.log("🔄 Starting store credit sync from admin interface...");
+        debugLog("Starting store credit sync from admin interface");
         const result = await syncStoreCreditForAllCustomers(request);
         
         return json({
@@ -99,7 +111,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           message: `Store credit sync completed: ${result.ordersProcessed} orders processed, ${result.customersAffected} customers updated, $${result.totalStoreCreditFound.toFixed(2)} total store credit found.`
         });
       } catch (error) {
-        console.error("❌ Store credit sync failed:", error);
+        logError(error instanceof Error ? error : new Error(String(error)), {
+          operation: 'syncStoreCredit',
+          source: 'admin-interface'
+        });
         return json({
           success: false,
           error: error instanceof Error ? error.message : "Store credit sync failed"
@@ -109,7 +124,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     return json({ success: false, error: "Invalid action" });
   } catch (error) {
-    console.error("Error in action:", error);
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      operation: 'customers-action',
+      action: action
+    });
     return json({
       success: false,
       error: error instanceof Error ? error.message : "An error occurred",
@@ -161,9 +179,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       };
     });
 
-    console.log(
-      `✅ Loaded ${customers.length} customers from database cache (no API calls)`,
-    );
+    debugLog(`Loaded ${customers.length} customers from database cache (no API calls)`);
 
     return json({
       customers: serializeBigInt(customers),
@@ -172,7 +188,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       error: null,
     });
   } catch (error) {
-    console.error("Error in loader:", error);
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      operation: 'customers-loader'
+    });
     return json({
       customers: [],
       success: false,
@@ -214,48 +232,6 @@ export default function CustomersPage() {
     plural: "customers",
   };
 
-  // Custom selection state management to fix "select all" toggle issue
-  const [selectedResources, setSelectedResources] = useState<string[]>([]);
-  const [allResourcesSelected, setAllResourcesSelected] = useState(false);
-
-  // Custom selection change handler that matches IndexTable's expected signature
-  const handleSelectionChange = (
-    selectionType: any,
-    toggleType: boolean,
-    selection?: string | any,
-    position?: number,
-  ) => {
-    if (selectionType === "all") {
-      if (toggleType) {
-        // Select all current customers
-        const allIds = currentCustomers.map((customer: any) =>
-          customer.id.replace("gid://shopify/Customer/", ""),
-        );
-        setSelectedResources(allIds);
-        setAllResourcesSelected(true);
-      } else {
-        // Deselect all
-        setSelectedResources([]);
-        setAllResourcesSelected(false);
-      }
-    } else if (selectionType === "single" && typeof selection === "string") {
-      if (toggleType) {
-        setSelectedResources((prev) => [...prev, selection]);
-      } else {
-        setSelectedResources((prev) => prev.filter((id) => id !== selection));
-      }
-      // Update allResourcesSelected based on current selection
-      const allIds = currentCustomers.map((customer: any) =>
-        customer.id.replace("gid://shopify/Customer/", ""),
-      );
-      const newSelectedResources = toggleType
-        ? [...selectedResources, selection]
-        : selectedResources.filter((id) => id !== selection);
-      setAllResourcesSelected(
-        newSelectedResources.length === allIds.length && allIds.length > 0,
-      );
-    }
-  };
 
   const tabs = [
     {
@@ -485,6 +461,12 @@ export default function CustomersPage() {
   const endIndex = startIndex + customersPerPage;
   const currentCustomers = sortedCustomers.slice(startIndex, endIndex);
 
+  // FIXED #001: Replace broken custom selection logic with proper useSelection hook
+  const customerSelection = useIndexTableSelection(
+    currentCustomers,
+    (customer: any) => customer.id.replace("gid://shopify/Customer/", "")
+  );
+
   const handleSort = (field: string) => {
     if (sortField === field) {
       setSortDirection(
@@ -604,7 +586,7 @@ export default function CustomersPage() {
       <IndexTable.Row
         id={id}
         key={id}
-        selected={selectedResources.includes(id)}
+        selected={customerSelection.isSelected(id)}
         position={index}
       >
         <IndexTable.Cell>
@@ -661,8 +643,9 @@ export default function CustomersPage() {
           )}
         </IndexTable.Cell>
         <IndexTable.Cell>${customer.spentAmount.toFixed(2)}</IndexTable.Cell>
-        <IndexTable.Cell>${customer.storeCreditUsed.toFixed(2)}</IndexTable.Cell>
-        <IndexTable.Cell>${customer.loyaltyEligibleSpending.toFixed(2)}</IndexTable.Cell>
+        {/* FIXED #002: Added null checks to prevent NaN display */}
+        <IndexTable.Cell>${(customer.storeCreditUsed || 0).toFixed(2)}</IndexTable.Cell>
+        <IndexTable.Cell>${(customer.loyaltyEligibleSpending || 0).toFixed(2)}</IndexTable.Cell>
         <IndexTable.Cell>{customer.numberOfOrders || 0}</IndexTable.Cell>
         <IndexTable.Cell>{customer.location}</IndexTable.Cell>
         <IndexTable.Cell>
@@ -788,10 +771,8 @@ export default function CustomersPage() {
             <IndexTable
               resourceName={resourceName}
               itemCount={rowMarkup.length}
-              selectedItemsCount={
-                allResourcesSelected ? "All" : selectedResources.length
-              }
-              onSelectionChange={handleSelectionChange}
+              selectedItemsCount={customerSelection.selectedItemsCount}
+              onSelectionChange={customerSelection.handleSelectionChange}
               headings={[
                 { title: `Name${getSortIndicator("name")}` },
                 { title: `Email${getSortIndicator("email")}` },

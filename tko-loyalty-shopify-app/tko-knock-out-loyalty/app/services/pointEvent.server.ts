@@ -1,4 +1,7 @@
 import prisma from "../db.server";
+import { safeJsonParse } from "../utils/errorHandler.server.js";
+import { validateCollectionsArray, validateProductIdsArray } from "../utils/validation.server.js";
+import { logError, logOrderProcessing, debugLog, logger } from "../utils/logger.server.js";
 
 /**
  * Get all point events
@@ -188,19 +191,23 @@ export async function calculateBonusPoints({
   }>;
   isInstoreOrder?: boolean;
 }) {
-  console.log(
-    `🎯 Starting bonus points calculation for ${orderLineItems.length} line items`,
+  logOrderProcessing(
+    'bonus-calculation', 
+    'unknown', 
+    `Starting bonus points calculation for ${orderLineItems.length} line items (${isInstoreOrder ? "in-store" : "online"})`
   );
-  console.log(`📍 Order type: ${isInstoreOrder ? "in-store" : "online"}`);
 
   let totalBonusPoints = 0;
   const activeEvents = await getActivePointEvents();
   const appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
 
-  console.log(`🎪 Found ${activeEvents.length} active point events`);
+  logger.info('Active point events found', { 
+    eventCount: activeEvents.length,
+    orderType: isInstoreOrder ? "in-store" : "online"
+  });
 
   if (activeEvents.length === 0) {
-    console.log(`ℹ️ No active events found - no bonus points will be awarded`);
+    logOrderProcessing('bonus-calculation', 'unknown', 'No active events found - no bonus points will be awarded');
     return {
       totalBonusPoints: 0,
       appliedEvents: [],
@@ -208,20 +215,25 @@ export async function calculateBonusPoints({
   }
 
   for (const event of activeEvents) {
-    console.log(`\n🎪 Evaluating event: "${event.name}" (${event.eventType})`);
-    console.log(`   📅 Active: ${event.startDate} to ${event.endDate}`);
-    console.log(
-      `   📺 Channel: ${event.channel} | Bonus: ${event.bonusPercentage}%`,
-    );
+    logger.info('Evaluating point event', {
+      eventName: event.name,
+      eventType: event.eventType,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      channel: event.channel,
+      bonusPercentage: event.bonusPercentage
+    });
 
     // Check if event applies to this order channel
     if (
       (event.channel === "online" && isInstoreOrder) ||
       (event.channel === "instore" && !isInstoreOrder)
     ) {
-      console.log(
-        `   ⏭️ Skipping - channel mismatch (event: ${event.channel}, order: ${isInstoreOrder ? "instore" : "online"})`,
-      );
+      debugLog('Skipping event due to channel mismatch', {
+        eventChannel: event.channel,
+        orderType: isInstoreOrder ? "instore" : "online",
+        eventName: event.name
+      });
       continue;
     }
 
@@ -231,9 +243,10 @@ export async function calculateBonusPoints({
 
     // For store-wide events, apply to all products
     if (event.eventType === "store-wide") {
-      console.log(
-        `   🌍 Store-wide event - applying to all ${orderLineItems.length} items`,
-      );
+      logger.info('Processing store-wide event', {
+        eventName: event.name,
+        itemCount: orderLineItems.length
+      });
 
       for (const lineItem of orderLineItems) {
         const lineItemTotal = lineItem.price * lineItem.quantity;
@@ -242,32 +255,61 @@ export async function calculateBonusPoints({
         qualifyingItems++;
         qualifyingAmount += lineItemTotal;
 
-        console.log(
-          `     ✅ Product ${lineItem.productId}: $${lineItemTotal.toFixed(2)} → +${itemBonus.toFixed(2)} bonus`,
-        );
+        debugLog('Store-wide event applied to product', {
+          productId: lineItem.productId,
+          lineItemTotal,
+          itemBonus,
+          eventName: event.name
+        });
       }
     }
 
     // For collection-based events, check if products are in the collections
     if (event.eventType === "collections" && event.collections) {
-      let eventCollections: string[] = [];
-
-      try {
-        eventCollections = JSON.parse(event.collections) as string[];
-        console.log(
-          `   📂 Collection-based event targeting collections: [${eventCollections.join(", ")}]`,
+      // FIXED #003: Replace unsafe JSON.parse with proper error handling and validation
+      const collectionsResult = safeJsonParse<string[]>(event.collections, []);
+      
+      if (!collectionsResult.success) {
+        logError(
+          new Error(`Failed to parse event collections: ${collectionsResult.error}`),
+          { 
+            operation: 'calculateBonusPoints',
+            eventId: event.id,
+            eventName: event.name,
+            collectionsData: event.collections?.substring(0, 100) + '...'
+          }
         );
-      } catch (error) {
-        console.error(`   ❌ Error parsing event collections:`, error);
-        console.log(`   ⏭️ Skipping event due to collection parsing error`);
+        logOrderProcessing('bonus-calculation', 'unknown', `Skipping event ${event.name} due to collection parsing error`);
         continue;
       }
 
-      for (const lineItem of orderLineItems) {
-        console.log(`     🔍 Checking product ${lineItem.productId}:`);
-        console.log(
-          `       Product collections: [${lineItem.collections.join(", ") || "none"}]`,
+      // Validate that the parsed data is actually an array of strings
+      const collectionsValidation = validateCollectionsArray(collectionsResult.data);
+      if (!collectionsValidation.isValid) {
+        logError(
+          new Error(`Invalid collections data format: ${collectionsValidation.errors.join(', ')}`),
+          { 
+            operation: 'calculateBonusPoints',
+            eventId: event.id,
+            eventName: event.name,
+            collectionsData: collectionsResult.data
+          }
         );
+        logOrderProcessing('bonus-calculation', 'unknown', `Skipping event ${event.name} due to invalid collections format`);
+        continue;
+      }
+
+      const eventCollections = collectionsResult.data || [];
+      logOrderProcessing('bonus-calculation', 'unknown', 
+        `Collection-based event targeting collections: [${eventCollections.join(", ")}]`
+      );
+
+      for (const lineItem of orderLineItems) {
+        debugLog('Checking product for collection event', {
+          productId: lineItem.productId,
+          productCollections: lineItem.collections,
+          eventName: event.name
+        });
 
         // Check if this product is in any of the event collections
         const matchingCollections = lineItem.collections.filter(
@@ -281,35 +323,67 @@ export async function calculateBonusPoints({
           qualifyingItems++;
           qualifyingAmount += lineItemTotal;
 
-          console.log(
-            `       ✅ MATCH! Collections: [${matchingCollections.join(", ")}]`,
-          );
-          console.log(
-            `       💰 $${lineItemTotal.toFixed(2)} → +${itemBonus.toFixed(2)} bonus`,
-          );
+          logger.info('Collection event match found', {
+            productId: lineItem.productId,
+            matchingCollections,
+            lineItemTotal,
+            itemBonus,
+            eventName: event.name
+          });
         } else {
-          console.log(`       ❌ No matching collections`);
+          debugLog('No matching collections for product', {
+            productId: lineItem.productId,
+            eventName: event.name
+          });
         }
       }
     }
 
     // For product-specific events, check if any products match
     if (event.eventType === "product-specific" && event.productIds) {
-      let eventProductIds: string[] = [];
-
-      try {
-        eventProductIds = JSON.parse(event.productIds) as string[];
-        console.log(
-          `   🎯 Product-specific event targeting products: [${eventProductIds.join(", ")}]`,
+      // FIXED #003: Replace unsafe JSON.parse with proper error handling and validation
+      const productIdsResult = safeJsonParse<string[]>(event.productIds, []);
+      
+      if (!productIdsResult.success) {
+        logError(
+          new Error(`Failed to parse event product IDs: ${productIdsResult.error}`),
+          { 
+            operation: 'calculateBonusPoints',
+            eventId: event.id,
+            eventName: event.name,
+            productIdsData: event.productIds?.substring(0, 100) + '...'
+          }
         );
-      } catch (error) {
-        console.error(`   ❌ Error parsing event product IDs:`, error);
-        console.log(`   ⏭️ Skipping event due to product ID parsing error`);
+        logOrderProcessing('bonus-calculation', 'unknown', `Skipping event ${event.name} due to product ID parsing error`);
         continue;
       }
 
+      // Validate that the parsed data is actually an array of strings/numbers
+      const productIdsValidation = validateProductIdsArray(productIdsResult.data);
+      if (!productIdsValidation.isValid) {
+        logError(
+          new Error(`Invalid product IDs data format: ${productIdsValidation.errors.join(', ')}`),
+          { 
+            operation: 'calculateBonusPoints',
+            eventId: event.id,
+            eventName: event.name,
+            productIdsData: productIdsResult.data
+          }
+        );
+        logOrderProcessing('bonus-calculation', 'unknown', `Skipping event ${event.name} due to invalid product IDs format`);
+        continue;
+      }
+
+      const eventProductIds = (productIdsResult.data || []).map(String); // Convert to strings for comparison
+      logOrderProcessing('bonus-calculation', 'unknown', 
+        `Product-specific event targeting products: [${eventProductIds.join(", ")}]`
+      );
+
       for (const lineItem of orderLineItems) {
-        console.log(`     🔍 Checking product ${lineItem.productId}`);
+        debugLog('Checking product for product-specific event', {
+          productId: lineItem.productId,
+          eventName: event.name
+        });
 
         if (eventProductIds.includes(lineItem.productId)) {
           const lineItemTotal = lineItem.price * lineItem.quantity;
@@ -318,12 +392,17 @@ export async function calculateBonusPoints({
           qualifyingItems++;
           qualifyingAmount += lineItemTotal;
 
-          console.log(`       ✅ MATCH! Product in event list`);
-          console.log(
-            `       💰 $${lineItemTotal.toFixed(2)} → +${itemBonus.toFixed(2)} bonus`,
-          );
+          logger.info('Product-specific event match found', {
+            productId: lineItem.productId,
+            lineItemTotal,
+            itemBonus,
+            eventName: event.name
+          });
         } else {
-          console.log(`       ❌ Product not in event list`);
+          debugLog('Product not in event list', {
+            productId: lineItem.productId,
+            eventName: event.name
+          });
         }
       }
     }
@@ -335,34 +414,45 @@ export async function calculateBonusPoints({
       totalBonusPoints += roundedPoints;
       appliedEvents.push({ eventId: event.id, pointsAwarded: roundedPoints });
 
-      console.log(
-        `   🎉 Event qualified! ${qualifyingItems} items, $${qualifyingAmount.toFixed(2)} total`,
-      );
-      console.log(
-        `   🏆 Raw bonus: ${eventBonusPoints.toFixed(2)} → Rounded: ${roundedPoints} points`,
-      );
+      logger.info('Event qualified for bonus points', {
+        eventName: event.name,
+        eventId: event.id,
+        qualifyingItems,
+        qualifyingAmount,
+        rawBonus: eventBonusPoints,
+        roundedPoints
+      });
 
       // Update event statistics
       try {
         await updatePointEventStats(event.id, roundedPoints);
-        console.log(`   📊 Event statistics updated`);
+        debugLog('Event statistics updated', { eventId: event.id });
       } catch (error) {
-        console.error(`   ❌ Error updating event statistics:`, error);
+        logError(error instanceof Error ? error : new Error(String(error)), {
+          operation: 'updatePointEventStats',
+          eventId: event.id,
+          eventName: event.name
+        });
       }
     } else {
-      console.log(`   ❌ Event did not qualify - no matching items found`);
+      debugLog('Event did not qualify - no matching items found', {
+        eventName: event.name,
+        eventId: event.id
+      });
     }
   }
 
-  console.log(`\n🏁 Bonus calculation complete:`);
-  console.log(`   🎁 Total bonus points: ${totalBonusPoints}`);
-  console.log(`   🎪 Events applied: ${appliedEvents.length}`);
+  logOrderProcessing('bonus-calculation', 'unknown', 
+    `Bonus calculation complete: ${totalBonusPoints} total points from ${appliedEvents.length} events`
+  );
 
   if (appliedEvents.length > 0) {
-    appliedEvents.forEach((event, index) => {
-      console.log(
-        `     ${index + 1}. Event ${event.eventId}: ${event.pointsAwarded} points`,
-      );
+    logger.info('Applied events summary', {
+      totalBonusPoints,
+      appliedEvents: appliedEvents.map(event => ({
+        eventId: event.eventId,
+        pointsAwarded: event.pointsAwarded
+      }))
     });
   }
 

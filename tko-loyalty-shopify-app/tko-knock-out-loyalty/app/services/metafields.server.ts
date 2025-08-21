@@ -1,6 +1,9 @@
 // Import the admin type from a local type definition
 import type { Admin } from "../types";
 import { getTierById, getTiers } from "./tier.server";
+import { logger } from "../utils/logger.server";
+import { withRetry, ServiceResult } from "../utils/errorHandler.server";
+import { measurePerformance } from "../utils/performance.server";
 
 // Namespace for our loyalty program metafields
 export const METAFIELD_NAMESPACE = "tko_loyalty";
@@ -149,15 +152,22 @@ export async function updateCustomerTierMetafields(
 
     // Check for authentication errors specifically
     if (response.status === 401) {
-      console.warn(
-        `⚠️ Authentication failed for metafield update (customer ${shopifyCustomerId}) - this is expected in webhook context`,
-      );
+      logger.warn("Authentication failed for metafield update", {
+        operation: "updateCustomerTierMetafields",
+        shopifyCustomerId,
+        context: "webhook_context",
+        expected: true
+      });
       return { success: false, error: "authentication_failed", skipped: true };
     }
 
     // Check for GraphQL errors
     if (responseJson.errors) {
-      console.error(`GraphQL errors in metafield update:`, responseJson.errors);
+      logger.error("GraphQL errors in metafield update", {
+        operation: "updateCustomerTierMetafields",
+        shopifyCustomerId,
+        errors: responseJson.errors
+      });
       throw new Error(
         `GraphQL errors: ${responseJson.errors.map((e: any) => e.message).join(", ")}`,
       );
@@ -166,7 +176,11 @@ export async function updateCustomerTierMetafields(
     // Check for user errors in the mutation response
     if (responseJson.data?.metafieldsSet?.userErrors?.length > 0) {
       const userErrors = responseJson.data.metafieldsSet.userErrors;
-      console.error(`User errors in metafield update:`, userErrors);
+      logger.error("User errors in metafield update", {
+        operation: "updateCustomerTierMetafields",
+        shopifyCustomerId,
+        userErrors
+      });
       throw new Error(
         `User errors: ${userErrors.map((e: any) => e.message).join(", ")}`,
       );
@@ -176,16 +190,20 @@ export async function updateCustomerTierMetafields(
   } catch (error) {
     // Enhanced error logging with context
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(
-      `Error updating customer tier metafields for customer ${shopifyCustomerId}:`,
-      errorMessage,
-    );
+    logger.error("Error updating customer tier metafields", {
+      operation: "updateCustomerTierMetafields",
+      shopifyCustomerId,
+      error: errorMessage
+    });
 
     // Check if this is an authentication error (common in webhook context)
     if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
-      console.warn(
-        `⚠️ Authentication error during metafield update - this may be expected in webhook context`,
-      );
+      logger.warn("Authentication error during metafield update", {
+        operation: "updateCustomerTierMetafields",
+        shopifyCustomerId,
+        context: "webhook_context",
+        expected: true
+      });
       return { success: false, error: "authentication_failed", skipped: true };
     }
 
@@ -247,7 +265,10 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
         const customersData: any = responseJson.data?.customers;
 
         if (!customersData) {
-          console.error("No customer data returned from API");
+          logger.error("No customer data returned from API", {
+            operation: "bulkUpdateAllCustomerMetafields",
+            pageCount
+          });
           break;
         }
 
@@ -260,9 +281,12 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
         cursor = customersData.pageInfo.endCursor;
         pageCount++;
 
-        console.log(
-          `Fetched page ${pageCount} with ${pageCustomers.length} customers. Total: ${allCustomers.length}`,
-        );
+        logger.info("Fetched customer page", {
+          operation: "bulkUpdateAllCustomerMetafields",
+          pageNumber: pageCount,
+          pageCustomers: pageCustomers.length,
+          totalCustomers: allCustomers.length
+        });
       }
 
       return allCustomers;
@@ -463,7 +487,10 @@ export async function bulkUpdateAllCustomerMetafields(admin: Admin) {
 
     return results;
   } catch (error) {
-    console.error("Error in bulk update of customer metafields:", error);
+    logger.error("Error in bulk update of customer metafields", {
+      operation: "bulkUpdateAllCustomerMetafields",
+      error: error instanceof Error ? error.message : String(error)
+    });
     throw error;
   }
 }

@@ -2,6 +2,9 @@ import prisma from "../db.server";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { createOrUpdateOrder } from "./order.server";
 import { processFulfilledOrder } from "./orderProcessor.server";
+import { logger } from "../utils/logger.server";
+import { withRetry, ServiceResult } from "../utils/errorHandler.server";
+import { measurePerformance } from "../utils/performance.server";
 
 interface ShopifyOrder {
   id: number;
@@ -131,13 +134,17 @@ export class OrderSyncService {
     });
 
     if (lastOrder) {
-      console.log(
-        `📅 Last order in database: #${lastOrder.orderNumber} at ${lastOrder.createdAt.toISOString()}`,
-      );
+      logger.info("Last order found in database", {
+        operation: "getLastOrderInDatabase",
+        orderNumber: lastOrder.orderNumber,
+        createdAt: lastOrder.createdAt.toISOString()
+      });
       return lastOrder.createdAt;
     }
 
-    console.log("📅 No orders found in database");
+    logger.info("No orders found in database", {
+      operation: "getLastOrderInDatabase"
+    });
     return null;
   }
 
@@ -146,14 +153,17 @@ export class OrderSyncService {
    */
   async syncMissingOrders(): Promise<SyncResult> {
     const startTime = Date.now();
-    console.log("🔄 Starting missing orders sync...");
+    logger.info("Starting missing orders sync", {
+      operation: "syncMissingOrders"
+    });
 
     const lastOrderDate = await this.getLastOrderInDatabase();
 
     if (!lastOrderDate) {
-      console.log(
-        "⚠️ No orders in database - consider running full sync instead",
-      );
+      logger.warn("No orders in database - consider running full sync instead", {
+        operation: "syncMissingOrders",
+        recommendation: "full_sync"
+      });
       return {
         totalOrders: 0,
         processedOrders: 0,
@@ -177,7 +187,10 @@ export class OrderSyncService {
    */
   async syncOrdersSince(sinceDate: Date): Promise<SyncResult> {
     const startTime = Date.now();
-    console.log(`🔄 Syncing orders since: ${sinceDate.toISOString()}`);
+    logger.info("Syncing orders since date", {
+      operation: "syncOrdersSince",
+      sinceDate: sinceDate.toISOString()
+    });
 
     let totalOrders = 0;
     let processedOrders = 0;
@@ -194,7 +207,10 @@ export class OrderSyncService {
     try {
       while (hasNextPage) {
         batchCount++;
-        console.log(`📦 Processing batch ${batchCount}...`);
+        logger.info("Processing batch", {
+          operation: "syncOrdersSince",
+          batchNumber: batchCount
+        });
 
         try {
           const queryVariables: {
@@ -326,16 +342,21 @@ export class OrderSyncService {
           const ordersData = responseJson.data?.orders;
 
           if (!ordersData) {
-            console.error("❌ No order data returned from API");
+            logger.error("No order data returned from API", {
+              operation: "syncOrdersSince",
+              batchNumber: batchCount
+            });
             break;
           }
 
           const orders = ordersData.edges.map((edge: any) => edge.node);
           totalOrders += orders.length;
 
-          console.log(
-            `📦 Batch ${batchCount}: Processing ${orders.length} orders`,
-          );
+          logger.info("Batch processing orders", {
+            operation: "syncOrdersSince",
+            batchNumber: batchCount,
+            ordersCount: orders.length
+          });
 
           // Process each order
           for (const shopifyOrder of orders) {
@@ -364,9 +385,12 @@ export class OrderSyncService {
                   const numberOfOrders =
                     parseInt(shopifyOrder.customer.numberOfOrders) || 0;
 
-                  console.log(
-                    `🔄 Updating customer ${customerShopifyId} with current Shopify data: $${totalSpend} total spend, ${numberOfOrders} orders`,
-                  );
+                  logger.info("Updating customer with current Shopify data", {
+                    operation: "syncOrdersSince",
+                    customerShopifyId,
+                    totalSpend,
+                    numberOfOrders
+                  });
 
                   // Import createOrUpdateCustomer to ensure data consistency
                   const { createOrUpdateCustomer } = await import(
@@ -411,23 +435,27 @@ export class OrderSyncService {
                     pointsResult.bonusPoints > 0
                   ) {
                     pointsAwarded += pointsResult.bonusPoints;
-                    console.log(
-                      `💰 Awarded ${pointsResult.bonusPoints} points for order #${shopifyOrder.number}`,
-                    );
+                    logger.info("Awarded points for order", {
+                      operation: "syncOrdersSince",
+                      bonusPoints: pointsResult.bonusPoints,
+                      orderNumber: shopifyOrder.number
+                    });
                   }
                 } catch (pointsError) {
-                  console.error(
-                    `❌ Error processing points for order #${shopifyOrder.number}:`,
-                    pointsError,
-                  );
+                  logger.error("Error processing points for order", {
+                    operation: "syncOrdersSince",
+                    orderNumber: shopifyOrder.number,
+                    error: pointsError instanceof Error ? pointsError.message : String(pointsError)
+                  });
                   errors++;
                 }
               }
             } catch (orderError) {
-              console.error(
-                `❌ Error processing order #${shopifyOrder.number}:`,
-                orderError,
-              );
+              logger.error("Error processing order", {
+                operation: "syncOrdersSince",
+                orderNumber: shopifyOrder.number,
+                error: orderError instanceof Error ? orderError.message : String(orderError)
+              });
               errors++;
             }
           }
@@ -436,14 +464,20 @@ export class OrderSyncService {
           hasNextPage = ordersData.pageInfo.hasNextPage;
           cursor = ordersData.pageInfo.endCursor;
 
-          console.log(
-            `✅ Batch ${batchCount} complete: ${orders.length} orders processed`,
-          );
+          logger.info("Batch complete", {
+            operation: "syncOrdersSince",
+            batchNumber: batchCount,
+            ordersProcessed: orders.length
+          });
 
           // Small delay to respect API limits
           await new Promise((resolve) => setTimeout(resolve, 100));
         } catch (batchError) {
-          console.error(`❌ Error processing batch ${batchCount}:`, batchError);
+          logger.error("Error processing batch", {
+            operation: "syncOrdersSince",
+            batchNumber: batchCount,
+            error: batchError instanceof Error ? batchError.message : String(batchError)
+          });
           errors++;
           break;
         }
@@ -452,12 +486,18 @@ export class OrderSyncService {
       const duration = Date.now() - startTime;
       const newLastOrder = await this.getLastOrderInDatabase();
 
-      console.log(
-        `🎉 Sync complete! Processed ${processedOrders}/${totalOrders} orders in ${duration}ms`,
-      );
-      console.log(
-        `📊 Stats: ${fulfilledOrders} fulfilled, ${customersUpdated} customers updated, ${pointsAwarded} points awarded, ${errors} errors`,
-      );
+      logger.info("Sync complete", {
+        operation: "syncOrdersSince",
+        processedOrders,
+        totalOrders,
+        duration,
+        stats: {
+          fulfilledOrders,
+          customersUpdated,
+          pointsAwarded,
+          errors
+        }
+      });
 
       return {
         totalOrders,
@@ -470,7 +510,10 @@ export class OrderSyncService {
         lastOrderDate: newLastOrder?.toISOString() || null,
       };
     } catch (error) {
-      console.error("💥 Fatal error in order sync:", error);
+      logger.error("Fatal error in order sync", {
+        operation: "syncOrdersSince",
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw error;
     }
   }

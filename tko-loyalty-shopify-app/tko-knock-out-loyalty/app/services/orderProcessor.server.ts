@@ -10,6 +10,9 @@ import {
   isBinderPOSOrder,
 } from "./collections.server";
 import { createOrUpdateOrder } from "./order.server";
+import { logger } from "../utils/logger.server";
+import { withRetry } from "../utils/errorHandler.server";
+import { measurePerformance } from "../utils/performance.server";
 
 interface OrderLineItem {
   id: string;
@@ -128,383 +131,494 @@ export async function processFulfilledOrder(
   orderData: ShopifyOrder,
   admin: AdminApiContext,
 ) {
-  if (!orderData.customer) {
-    console.log(`⚠️ Order ${orderData.name} has no customer - skipping`);
-    return { pointsAwarded: 0 };
-  }
+  return await measurePerformance(async () => {
+    if (!orderData.customer) {
+      logger.warn("Order has no customer - skipping", {
+        operation: "processFulfilledOrder",
+        orderName: orderData.name,
+        orderId: orderData.id
+      });
+      return { pointsAwarded: 0 };
+    }
 
-  const customer = orderData.customer;
-  const orderAmount = parseFloat(orderData.total_price);
-  const orderId = orderData.id.toString();
-  const orderName = orderData.name; // e.g., "#1001"
+    const customer = orderData.customer;
+    const orderAmount = parseFloat(orderData.total_price);
+    const orderId = orderData.id.toString();
+    const orderName = orderData.name; // e.g., "#1001"
 
-  // Enhanced logging with customer details
-  const customerName =
-    `${customer.first_name || ""} ${customer.last_name || ""}`.trim() ||
-    "Unknown";
-  const customerEmail = customer.email || "No email";
+    // Enhanced logging with customer details
+    const customerName =
+      `${customer.first_name || ""} ${customer.last_name || ""}`.trim() ||
+      "Unknown";
+    const customerEmail = customer.email || "No email";
 
-  console.log(
-    `📦 Processing fulfilled order ${orderName} ($${orderAmount.toFixed(2)})`,
-  );
-  console.log(
-    `👤 Customer: ${customerName} (${customerEmail}) - ID: ${customer.id}`,
-  );
+    logger.info("Processing fulfilled order", {
+      operation: "processFulfilledOrder",
+      orderName,
+      orderAmount,
+      customerId: customer.id,
+      customerName,
+      customerEmail
+    });
 
-  // FIXED: Use Shopify GraphQL API to get accurate customer total spend
-  // This replaces the broken webhook payload logic that was showing $0.00
-  let totalSpend = 0;
-  let numberOfOrders = 0;
-  let shopifyCreatedAt = null;
-  let lastOrderDate = null;
-  
-  try {
-    console.log(`🔍 Fetching accurate customer data from Shopify API...`);
+    // FIXED: Use Shopify GraphQL API to get accurate customer total spend
+    // This replaces the broken webhook payload logic that was showing $0.00
+    let totalSpend = 0;
+    let numberOfOrders = 0;
+    let shopifyCreatedAt = null;
+    let lastOrderDate = null;
     
-    const customerQuery = `
-      query GetCustomerForLoyalty($customerId: ID!) {
-        customer(id: $customerId) {
-          id
-          email
-          firstName
-          lastName
-          phone
-          tags
-          createdAt
-          updatedAt
-          amountSpent {
-            amount
-            currencyCode
-          }
-          numberOfOrders
-          defaultAddress {
-            city
-            province
-            country
-          }
-          lastOrder {
-            processedAt
+    try {
+      logger.info("Fetching accurate customer data from Shopify API", {
+        operation: "processFulfilledOrder",
+        customerId: customer.id
+      });
+      
+      const customerQuery = `
+        query GetCustomerForLoyalty($customerId: ID!) {
+          customer(id: $customerId) {
+            id
+            email
+            firstName
+            lastName
+            phone
+            tags
+            createdAt
+            updatedAt
+            amountSpent {
+              amount
+              currencyCode
+            }
+            numberOfOrders
+            defaultAddress {
+              city
+              province
+              country
+            }
+            lastOrder {
+              processedAt
+            }
           }
         }
-      }
-    `;
-    
-    const response = await admin.graphql(customerQuery, {
-      variables: { customerId: `gid://shopify/Customer/${customer.id}` }
-    });
-    
-    const result = await response.json();
-    
-    if (result.data?.customer) {
-      const shopifyCustomer = result.data.customer;
-      // FIXED: amountSpent.amount is in dollars, use directly for 1:1 points system
-      const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
-      totalSpend = Math.round(totalSpendDollars); // Round dollars to points (1:1 ratio)
-      numberOfOrders = shopifyCustomer.numberOfOrders || 0;
-      shopifyCreatedAt = shopifyCustomer.createdAt ? new Date(shopifyCustomer.createdAt) : null;
-      lastOrderDate = shopifyCustomer.lastOrder?.processedAt ? new Date(shopifyCustomer.lastOrder.processedAt) : new Date(orderData.created_at);
+      `;
       
-      console.log(`✅ Shopify API customer data retrieved successfully:`);
-      console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
-      console.log(`   📦 Number of orders: ${numberOfOrders}`);
-      console.log(`   📅 Customer since: ${shopifyCreatedAt?.toLocaleDateString() || 'Unknown'}`);
-      console.log(`   🛒 Last order: ${lastOrderDate?.toLocaleDateString() || 'Unknown'}`);
-    } else {
-      throw new Error(`No customer data returned from Shopify API`);
+      const customerResult = await withRetry(async () => {
+        const response = await admin.graphql(customerQuery, {
+          variables: { customerId: `gid://shopify/Customer/${customer.id}` }
+        });
+        
+        const result: any = await response.json();
+        
+        if (result.errors && result.errors.length > 0) {
+          throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+        }
+        
+        if (!result.data?.customer) {
+          throw new Error("No customer data returned from Shopify API");
+        }
+        
+        return result.data.customer;
+      }, 3, 1000, { 
+        operation: "processFulfilledOrder", 
+        additionalData: { customerId: customer.id }
+      });
+      
+      if (customerResult.success && customerResult.data) {
+        const shopifyCustomer = customerResult.data;
+        // FIXED: amountSpent.amount is in dollars, use directly for 1:1 points system
+        const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+        totalSpend = Math.round(totalSpendDollars); // Round dollars to points (1:1 ratio)
+        numberOfOrders = shopifyCustomer.numberOfOrders || 0;
+        shopifyCreatedAt = shopifyCustomer.createdAt ? new Date(shopifyCustomer.createdAt) : null;
+        lastOrderDate = shopifyCustomer.lastOrder?.processedAt ? new Date(shopifyCustomer.lastOrder.processedAt) : new Date(orderData.created_at);
+        
+        logger.info("Shopify API customer data retrieved successfully", {
+          operation: "processFulfilledOrder",
+          customerId: customer.id,
+          totalSpendDollars,
+          totalSpend,
+          numberOfOrders,
+          customerSince: shopifyCreatedAt?.toISOString(),
+          lastOrder: lastOrderDate?.toISOString()
+        });
+      } else {
+        throw new Error(customerResult.error || "Failed to fetch customer data");
+      }
+    } catch (error) {
+      logger.error("Error fetching customer data from Shopify API", {
+        operation: "processFulfilledOrder",
+        customerId: customer.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      logger.warn("Falling back to webhook payload data", {
+        operation: "processFulfilledOrder",
+        customerId: customer.id
+      });
+      
+      // Fallback to webhook data if API fails
+      const rawTotalSpendFromWebhook = parseFloat(customer.total_spent || "0");
+      const currentOrderAmount = parseFloat(orderData.total_price);
+      totalSpend = Math.round(rawTotalSpendFromWebhook + currentOrderAmount);
+      numberOfOrders = customer.orders_count || 0;
+      lastOrderDate = new Date(orderData.created_at);
+      
+      logger.info("Fallback total spend calculated", {
+        operation: "processFulfilledOrder",
+        customerId: customer.id,
+        fallbackTotalSpend: totalSpend,
+        rawWebhookSpend: rawTotalSpendFromWebhook,
+        currentOrderAmount
+      });
     }
-  } catch (error) {
-    console.error(`❌ Error fetching customer data from Shopify API:`, error);
-    console.log(`⚠️ Falling back to webhook payload data (may be inaccurate)`);
-    
-    // Fallback to webhook data if API fails
-    const rawTotalSpendFromWebhook = parseFloat(customer.total_spent || "0");
-    const currentOrderAmount = parseFloat(orderData.total_price);
-    totalSpend = Math.round(rawTotalSpendFromWebhook + currentOrderAmount);
-    numberOfOrders = customer.orders_count || 0;
-    lastOrderDate = new Date(orderData.created_at);
-    
-    console.log(`   📊 Fallback total spend: $${(totalSpend / 100).toFixed(2)} → ${totalSpend} points`);
-  }
 
-  // Create or update customer in our database
-  let loyaltyCustomer;
-  try {
-    loyaltyCustomer = await getCustomerByShopifyId(customer.id);
+    // Create or update customer in our database
+    let loyaltyCustomer;
+    try {
+      loyaltyCustomer = await getCustomerByShopifyId(customer.id);
 
-    if (loyaltyCustomer) {
-      loyaltyCustomer = await createOrUpdateCustomer({
-        shopifyId: customer.id,
-        email: customer.email,
-        firstName: customer.first_name,
-        lastName: customer.last_name,
-        totalSpend: totalSpend,
-        lastOrderDate: new Date(orderData.created_at),
-        admin, // Keep admin for metafield updates with improved error handling
+      if (loyaltyCustomer) {
+        loyaltyCustomer = await createOrUpdateCustomer({
+          shopifyId: customer.id,
+          email: customer.email,
+          firstName: customer.first_name,
+          lastName: customer.last_name,
+          totalSpend: totalSpend,
+          lastOrderDate: new Date(orderData.created_at),
+          admin, // Keep admin for metafield updates with improved error handling
+        });
+      } else {
+        loyaltyCustomer = await createOrUpdateCustomer({
+          shopifyId: customer.id,
+          email: customer.email,
+          firstName: customer.first_name,
+          lastName: customer.last_name,
+          totalSpend: totalSpend,
+          lastOrderDate: new Date(orderData.created_at),
+          admin, // Keep admin for metafield updates with improved error handling
+        });
+      }
+    } catch (error) {
+      logger.error("Error creating/updating customer", {
+        operation: "processFulfilledOrder",
+        customerId: customer.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+
+    // Save the order to our database
+    try {
+      logger.info("Saving order to database", {
+        operation: "processFulfilledOrder",
+        orderNumber: orderData.order_number,
+        orderId: orderData.id
+      });
+      await createOrUpdateOrder(orderData, loyaltyCustomer.id);
+      logger.info("Order saved to database successfully", {
+        operation: "processFulfilledOrder",
+        orderNumber: orderData.order_number
+      });
+    } catch (error) {
+      logger.error("Error saving order to database", {
+        operation: "processFulfilledOrder",
+        orderNumber: orderData.order_number,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      // Continue with points processing even if order save fails
+    }
+
+    // Note: Base/spend points are handled by the existing loyalty system
+    // This webhook only handles bonus points from events
+
+    // Extract product IDs and fetch their collections with enhanced error handling
+    const productIds = orderData.line_items
+      .filter((item) => item.product_id != null) // Filter out null/undefined product_ids
+      .map((item) => item.product_id.toString());
+    let productCollections: Record<string, string[]> = {};
+    let collectionFetchSuccess = false;
+
+    logger.info("Fetching product collections", {
+      operation: "processFulfilledOrder",
+      productCount: productIds.length
+    });
+
+    const collectionsResult = await fetchProductCollections(admin, productIds);
+    if (collectionsResult.success && collectionsResult.data) {
+      productCollections = collectionsResult.data;
+      collectionFetchSuccess = true;
+      logger.info("Successfully fetched product collections", {
+        operation: "processFulfilledOrder",
+        productsWithCollections: Object.keys(productCollections).length
       });
     } else {
-      loyaltyCustomer = await createOrUpdateCustomer({
-        shopifyId: customer.id,
-        email: customer.email,
-        firstName: customer.first_name,
-        lastName: customer.last_name,
-        totalSpend: totalSpend,
-        lastOrderDate: new Date(orderData.created_at),
-        admin, // Keep admin for metafield updates with improved error handling
+      logger.error("Error fetching product collections", {
+        operation: "processFulfilledOrder",
+        error: collectionsResult.error
+      });
+      logger.warn("Continuing without collection data - collection-based events will be skipped", {
+        operation: "processFulfilledOrder"
       });
     }
-  } catch (error) {
-    console.error(`Error creating/updating customer ${customer.id}:`, error);
-    throw error;
-  }
 
-  // Save the order to our database
-  try {
-    console.log(`💾 Saving order #${orderData.order_number} to database`);
-    await createOrUpdateOrder(orderData, loyaltyCustomer.id);
-    console.log(`✅ Order #${orderData.order_number} saved to database`);
-  } catch (error) {
-    console.error(`❌ Error saving order #${orderData.order_number}:`, error);
-    // Continue with points processing even if order save fails
-  }
+    // Prepare line items for bonus calculation (include ALL products with valid product_ids)
+    const orderLineItems = orderData.line_items
+      .filter((item) => item.product_id != null) // Filter out null/undefined product_ids
+      .map((item) => ({
+        productId: item.product_id.toString(),
+        price: parseFloat(item.price),
+        quantity: item.quantity,
+        collections: productCollections[item.product_id.toString()] || [],
+      }));
 
-  // Note: Base/spend points are handled by the existing loyalty system
-  // This webhook only handles bonus points from events
+    // Check if this is an in-store order (BinderPOS)
+    const isInstoreOrder = isBinderPOSOrder(orderData.note || null);
 
-  // Extract product IDs and fetch their collections with enhanced error handling
-  const productIds = orderData.line_items
-    .filter((item) => item.product_id != null) // Filter out null/undefined product_ids
-    .map((item) => item.product_id.toString());
-  let productCollections: Record<string, string[]> = {};
-  let collectionFetchSuccess = false;
+    // Enhanced product logging with collection identification issues
+    logger.info("Products in order", {
+      operation: "processFulfilledOrder",
+      orderLineItemsCount: orderLineItems.length,
+      isInstoreOrder
+    });
 
-  console.log(`🔍 Fetching collections for ${productIds.length} products...`);
+    let productsWithoutCollections = 0;
 
-  try {
-    productCollections = await fetchProductCollections(admin, productIds);
-    collectionFetchSuccess = true;
-    console.log(
-      `✅ Successfully fetched collections for ${Object.keys(productCollections).length} products`,
-    );
-  } catch (error) {
-    console.error("❌ Error fetching product collections:", error);
-    console.log(
-      "⚠️ Continuing without collection data - collection-based events will be skipped",
-    );
-  }
+    orderData.line_items.forEach((item, index) => {
+      const collections = productCollections[item.product_id.toString()] || [];
+      logger.debug("Product details", {
+        operation: "processFulfilledOrder",
+        productIndex: index + 1,
+        productId: item.product_id,
+        title: item.title,
+        price: parseFloat(item.price),
+        quantity: item.quantity,
+        collectionsCount: collections.length,
+        collections: collections
+      });
 
-  // Prepare line items for bonus calculation (include ALL products with valid product_ids)
-  const orderLineItems = orderData.line_items
-    .filter((item) => item.product_id != null) // Filter out null/undefined product_ids
-    .map((item) => ({
-      productId: item.product_id.toString(),
-      price: parseFloat(item.price),
-      quantity: item.quantity,
-      collections: productCollections[item.product_id.toString()] || [],
-    }));
+      if (collections.length === 0) {
+        productsWithoutCollections++;
+      }
+    });
 
-  // Check if this is an in-store order (BinderPOS)
-  const isInstoreOrder = isBinderPOSOrder(orderData.note || null);
-
-  // Enhanced product logging with collection identification issues
-  console.log(`🛍️ Products in order (${orderLineItems.length} items):`);
-  let productsWithoutCollections = 0;
-
-  orderData.line_items.forEach((item, index) => {
-    const collections = productCollections[item.product_id.toString()] || [];
-    console.log(
-      `  ${index + 1}. ${item.title} (ID: ${item.product_id}) - $${parseFloat(item.price).toFixed(2)} x${item.quantity}`,
-    );
-
-    if (collections.length > 0) {
-      console.log(`     ✅ Collections: [${collections.join(", ")}]`);
-    } else {
-      console.log(`     ⚠️ No collections found`);
-      productsWithoutCollections++;
+    if (productsWithoutCollections > 0) {
+      logger.warn("Products without collection data found", {
+        operation: "processFulfilledOrder",
+        productsWithoutCollections,
+        totalProducts: orderData.line_items.length
+      });
     }
-  });
 
-  if (productsWithoutCollections > 0) {
-    console.log(
-      `⚠️ ${productsWithoutCollections} products have no collection data - may affect collection-based events`,
-    );
-  }
+    // OPTIMIZED: Use shared Prisma client for all database operations
+    const { PrismaClient } = await import("@prisma/client");
+    const prisma = new PrismaClient();
 
-  // OPTIMIZED: Use shared Prisma client for all database operations
-  const { PrismaClient } = await import("@prisma/client");
-  const prisma = new PrismaClient();
+    // Check for existing bonus point transactions to prevent duplicates
+    logger.info("Checking for existing bonus point transactions", {
+      operation: "processFulfilledOrder",
+      orderId,
+      customerId: loyaltyCustomer.id
+    });
 
-  // Check for existing bonus point transactions to prevent duplicates
-  console.log(
-    `🔍 Checking for existing bonus point transactions for order ${orderId}...`,
-  );
-  let existingBonusTransactions: any[] = [];
+    let existingBonusTransactions: any[] = [];
 
-  try {
-    existingBonusTransactions = await prisma.pointTransaction.findMany({
+    try {
+      existingBonusTransactions = await prisma.pointTransaction.findMany({
+        where: {
+          customerId: loyaltyCustomer.id,
+          orderId: orderId,
+          type: "bonus",
+        },
+        include: {
+          event: {
+            select: { id: true, name: true },
+          },
+        },
+      });
+
+      if (existingBonusTransactions.length > 0) {
+        logger.warn("Found existing bonus transactions for order", {
+          operation: "processFulfilledOrder",
+          orderId,
+          existingTransactionsCount: existingBonusTransactions.length,
+          transactions: existingBonusTransactions.map(t => ({
+            eventName: t.event?.name || "Unknown Event",
+            amount: t.amount
+          }))
+        });
+      } else {
+        logger.info("No existing bonus transactions found - proceeding with calculation", {
+          operation: "processFulfilledOrder",
+          orderId
+        });
+      }
+    } catch (error) {
+      logger.error("Error checking existing transactions", {
+        operation: "processFulfilledOrder",
+        orderId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      logger.warn("Continuing with bonus calculation despite duplicate check failure", {
+        operation: "processFulfilledOrder",
+        orderId
+      });
+    }
+
+    // Calculate bonus points with enhanced error handling
+    let bonusPoints = 0;
+    let appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
+    let eventNames: string[] = [];
+
+    if (orderLineItems.length > 0) {
+      try {
+        logger.info("Calculating bonus points", {
+          operation: "processFulfilledOrder",
+          orderType: isInstoreOrder ? "in-store" : "online",
+          orderLineItemsCount: orderLineItems.length
+        });
+
+        const bonusResult = await calculateBonusPoints({
+          orderLineItems,
+          isInstoreOrder,
+        });
+
+        bonusPoints = bonusResult.totalBonusPoints;
+        appliedEvents = bonusResult.appliedEvents;
+
+        logger.info("Bonus calculation completed", {
+          operation: "processFulfilledOrder",
+          bonusPoints,
+          appliedEventsCount: appliedEvents.length
+        });
+
+        // OPTIMIZED: Get event names for logging using shared Prisma client
+        if (appliedEvents.length > 0) {
+          try {
+            const events = await prisma.pointEvent.findMany({
+              where: { id: { in: appliedEvents.map((e) => e.eventId) } },
+              select: { id: true, name: true },
+            });
+            eventNames = events.map((e) => e.name);
+          } catch (error) {
+            logger.error("Error fetching event names", {
+              operation: "processFulfilledOrder",
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+      } catch (error) {
+        logger.error("Error calculating bonus points", {
+          operation: "processFulfilledOrder",
+          error: error instanceof Error ? error.message : String(error)
+        });
+        logger.warn("Continuing without bonus points", {
+          operation: "processFulfilledOrder"
+        });
+      }
+    }
+
+    // Enhanced event logging
+    if (appliedEvents.length > 0) {
+      logger.info("Applied point events", {
+        operation: "processFulfilledOrder",
+        appliedEvents: appliedEvents.map((event, index) => ({
+          eventId: event.eventId,
+          eventName: eventNames[index] || `Event ${event.eventId}`,
+          pointsAwarded: event.pointsAwarded
+        }))
+      });
+    } else {
+      logger.info("No point events qualified for this order", {
+        operation: "processFulfilledOrder",
+        collectionDataAvailable: collectionFetchSuccess
+      });
+    }
+
+    // OPTIMIZED: Batch check for existing transactions to prevent duplicates
+    let transactionErrors = 0;
+    let transactionsCreated = 0;
+
+    // Get all existing transactions for these events in one query
+    const existingEventTransactions = await prisma.pointTransaction.findMany({
       where: {
         customerId: loyaltyCustomer.id,
         orderId: orderId,
+        eventId: { in: appliedEvents.map(e => e.eventId) },
         type: "bonus",
       },
-      include: {
-        event: {
-          select: { id: true, name: true },
-        },
-      },
+      select: { eventId: true },
     });
 
-    if (existingBonusTransactions.length > 0) {
-      console.log(
-        `⚠️ Found ${existingBonusTransactions.length} existing bonus transactions for this order:`,
-      );
-      existingBonusTransactions.forEach((transaction, index) => {
-        const eventName = transaction.event?.name || "Unknown Event";
-        console.log(
-          `  ${index + 1}. ${eventName}: ${transaction.amount} points`,
-        );
-      });
-    } else {
-      console.log(
-        `✅ No existing bonus transactions found - proceeding with calculation`,
-      );
-    }
-  } catch (error) {
-    console.error("❌ Error checking existing transactions:", error);
-    console.log(
-      "⚠️ Continuing with bonus calculation (duplicate check failed)",
-    );
-  }
+    const existingEventIds = new Set(existingEventTransactions.map(t => t.eventId));
 
-  // Calculate bonus points with enhanced error handling
-  let bonusPoints = 0;
-  let appliedEvents: Array<{ eventId: string; pointsAwarded: number }> = [];
-  let eventNames: string[] = [];
-
-  if (orderLineItems.length > 0) {
-    try {
-      console.log(
-        `🧮 Calculating bonus points for ${isInstoreOrder ? "in-store" : "online"} order...`,
-      );
-
-      const bonusResult = await calculateBonusPoints({
-        orderLineItems,
-        isInstoreOrder,
-      });
-
-      bonusPoints = bonusResult.totalBonusPoints;
-      appliedEvents = bonusResult.appliedEvents;
-
-      console.log(
-        `✅ Bonus calculation completed: ${bonusPoints} total bonus points from ${appliedEvents.length} events`,
-      );
-
-      // OPTIMIZED: Get event names for logging using shared Prisma client
-      if (appliedEvents.length > 0) {
-        try {
-          const events = await prisma.pointEvent.findMany({
-            where: { id: { in: appliedEvents.map((e) => e.eventId) } },
-            select: { id: true, name: true },
+    for (const appliedEvent of appliedEvents) {
+      try {
+        // Check if transaction already exists using batched data
+        if (existingEventIds.has(appliedEvent.eventId)) {
+          logger.warn("Skipping duplicate bonus transaction", {
+            operation: "processFulfilledOrder",
+            eventId: appliedEvent.eventId,
+            pointsAwarded: appliedEvent.pointsAwarded
           });
-          eventNames = events.map((e) => e.name);
-        } catch (error) {
-          console.error("❌ Error fetching event names:", error);
+          continue;
         }
+
+        await createBonusPointsTransaction({
+          customerId: loyaltyCustomer.id,
+          amount: appliedEvent.pointsAwarded,
+          orderId,
+          eventId: appliedEvent.eventId,
+          description: `Bonus points from event for order #${orderData.order_number}`,
+          admin,
+        });
+
+        transactionsCreated++;
+        logger.info("Created bonus transaction", {
+          operation: "processFulfilledOrder",
+          eventId: appliedEvent.eventId,
+          pointsAwarded: appliedEvent.pointsAwarded
+        });
+      } catch (error) {
+        logger.error("Error creating bonus transaction", {
+          operation: "processFulfilledOrder",
+          eventId: appliedEvent.eventId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        transactionErrors++;
       }
-    } catch (error) {
-      console.error("❌ Error calculating bonus points:", error);
-      console.log("⚠️ Continuing without bonus points");
     }
-  }
 
-  // Enhanced event logging
-  if (appliedEvents.length > 0) {
-    console.log(`🎯 Applied point events:`);
-    appliedEvents.forEach((event, index) => {
-      const eventName = eventNames[index] || `Event ${event.eventId}`;
-      console.log(`  • ${eventName}: +${event.pointsAwarded} bonus points`);
-    });
-  } else {
-    console.log(`🎯 No point events qualified for this order`);
-    if (!collectionFetchSuccess) {
-      console.log(
-        `   ℹ️ Collection data unavailable - collection-based events were skipped`,
-      );
-    }
-  }
+    // Clean up Prisma client
+    await prisma.$disconnect();
 
-  // OPTIMIZED: Batch check for existing transactions to prevent duplicates
-  let transactionErrors = 0;
-  let transactionsCreated = 0;
-
-  // Get all existing transactions for these events in one query
-  const existingEventTransactions = await prisma.pointTransaction.findMany({
-    where: {
-      customerId: loyaltyCustomer.id,
-      orderId: orderId,
-      eventId: { in: appliedEvents.map(e => e.eventId) },
-      type: "bonus",
-    },
-    select: { eventId: true },
-  });
-
-  const existingEventIds = new Set(existingEventTransactions.map(t => t.eventId));
-
-  for (const appliedEvent of appliedEvents) {
-    try {
-      // Check if transaction already exists using batched data
-      if (existingEventIds.has(appliedEvent.eventId)) {
-        console.log(
-          `⚠️ Skipping duplicate bonus transaction for event ${appliedEvent.eventId} (${appliedEvent.pointsAwarded} points)`,
-        );
-        continue;
-      }
-
-      await createBonusPointsTransaction({
-        customerId: loyaltyCustomer.id,
-        amount: appliedEvent.pointsAwarded,
-        orderId,
-        eventId: appliedEvent.eventId,
-        description: `Bonus points from event for order #${orderData.order_number}`,
-        admin,
+    if (transactionErrors > 0) {
+      logger.warn("Some bonus transactions failed to create", {
+        operation: "processFulfilledOrder",
+        transactionErrors
       });
-
-      transactionsCreated++;
-      console.log(
-        `✅ Created bonus transaction: ${appliedEvent.pointsAwarded} points`,
-      );
-    } catch (error) {
-      console.error(
-        `❌ Error creating bonus transaction for event ${appliedEvent.eventId}:`,
-        error,
-      );
-      transactionErrors++;
     }
-  }
 
-  // Clean up Prisma client
-  await prisma.$disconnect();
+    if (transactionsCreated > 0) {
+      logger.info("Successfully created bonus point transactions", {
+        operation: "processFulfilledOrder",
+        transactionsCreated
+      });
+    }
 
-  if (transactionErrors > 0) {
-    console.log(`⚠️ ${transactionErrors} bonus transactions failed to create`);
-  }
+    // Enhanced final logging
+    logger.info("Order processed successfully", {
+      operation: "processFulfilledOrder",
+      orderName,
+      bonusPoints,
+      totalBonusPointsAwarded: bonusPoints,
+      orderType: isInstoreOrder ? "In-store (BinderPOS)" : "Online",
+      customerId: loyaltyCustomer.id
+    });
 
-  if (transactionsCreated > 0) {
-    console.log(
-      `✅ Successfully created ${transactionsCreated} bonus point transactions`,
-    );
-  }
-
-  // Enhanced final logging
-  console.log(`✅ Order ${orderName} processed successfully:`);
-  console.log(`   🎁 Bonus points: ${bonusPoints}`);
-  console.log(`   🏆 Total bonus points awarded: ${bonusPoints}`);
-  console.log(
-    `   📍 Order type: ${isInstoreOrder ? "In-store (BinderPOS)" : "Online"}`,
-  );
-
-  return {
-    bonusPoints,
-    appliedEvents,
-    customerId: loyaltyCustomer.id,
-  };
+    return {
+      bonusPoints,
+      appliedEvents,
+      customerId: loyaltyCustomer.id,
+    };
+  }, "processFulfilledOrder");
 }

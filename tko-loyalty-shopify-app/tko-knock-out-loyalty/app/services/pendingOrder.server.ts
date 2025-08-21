@@ -1,4 +1,5 @@
 import prisma from "../db.server";
+import { logger } from "../utils/logger.server";
 
 /**
  * Add an order to the pending orders queue
@@ -59,7 +60,10 @@ export async function removePendingOrder(shopifyOrderId: string) {
     });
   } catch (error) {
     // Order might not exist, which is fine
-    console.log(`Pending order ${shopifyOrderId} not found for deletion`);
+    logger.info("Pending order not found for deletion", {
+      operation: "removePendingOrder",
+      shopifyOrderId
+    });
     return null;
   }
 }

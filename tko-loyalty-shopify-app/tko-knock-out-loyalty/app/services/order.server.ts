@@ -1,4 +1,6 @@
 import { PrismaClient } from "@prisma/client";
+import { logger } from "../utils/logger.server";
+import { measurePerformance } from "../utils/performance.server";
 
 const prisma = new PrismaClient();
 
@@ -122,8 +124,15 @@ export async function createOrUpdateOrder(
   orderData: ShopifyOrder,
   customerId?: string,
 ) {
-  try {
-    console.log(`💾 Saving order #${orderData.order_number} to database`);
+  return await measurePerformance(async () => {
+    logger.info("Saving order to database", {
+      operation: "createOrUpdateOrder",
+      orderNumber: orderData.order_number,
+      shopifyId: orderData.id,
+      customerId,
+      totalAmount: parseFloat(orderData.total_price),
+      lineItemsCount: orderData.line_items?.length || 0
+    });
 
     // Calculate shipping amount from shipping lines
     const shippingAmount =
@@ -139,7 +148,12 @@ export async function createOrUpdateOrder(
     });
 
     if (existingOrder) {
-      console.log(`📝 Updating existing order #${orderData.order_number}`);
+      logger.info("Updating existing order", {
+        operation: "createOrUpdateOrder",
+        orderNumber: orderData.order_number,
+        existingOrderId: existingOrder.id,
+        existingLineItemsCount: existingOrder.lineItems.length
+      });
 
       // Update the order
       const updatedOrder = await prisma.order.update({
@@ -178,12 +192,19 @@ export async function createOrUpdateOrder(
         await createLineItems(updatedOrder.id, orderData.line_items);
       }
 
-      console.log(
-        `✅ Updated order #${orderData.order_number} with ${orderData.line_items?.length || 0} line items`,
-      );
+      logger.info("Order updated successfully", {
+        operation: "createOrUpdateOrder",
+        orderNumber: orderData.order_number,
+        orderId: updatedOrder.id,
+        lineItemsCount: orderData.line_items?.length || 0
+      });
       return updatedOrder;
     } else {
-      console.log(`🆕 Creating new order #${orderData.order_number}`);
+      logger.info("Creating new order", {
+        operation: "createOrUpdateOrder",
+        orderNumber: orderData.order_number,
+        shopifyId: orderData.id
+      });
 
       // Create new order
       const newOrder = await prisma.order.create({
@@ -219,15 +240,23 @@ export async function createOrUpdateOrder(
         await createLineItems(newOrder.id, orderData.line_items);
       }
 
-      console.log(
-        `✅ Created order #${orderData.order_number} with ${orderData.line_items?.length || 0} line items`,
-      );
+      logger.info("Order created successfully", {
+        operation: "createOrUpdateOrder",
+        orderNumber: orderData.order_number,
+        orderId: newOrder.id,
+        lineItemsCount: orderData.line_items?.length || 0
+      });
       return newOrder;
     }
-  } catch (error) {
-    console.error(`❌ Error saving order #${orderData.order_number}:`, error);
+  }, "createOrUpdateOrder").catch(error => {
+    logger.error("Error saving order", {
+      operation: "createOrUpdateOrder",
+      orderNumber: orderData.order_number,
+      shopifyId: orderData.id,
+      error: error instanceof Error ? error.message : String(error)
+    });
     throw error;
-  }
+  });
 }
 
 /**
@@ -255,7 +284,11 @@ async function createLineItems(orderId: string, lineItems: OrderLineItem[]) {
     data: lineItemsData,
   });
 
-  console.log(`📦 Created ${lineItemsData.length} line items for order`);
+  logger.info("Created line items for order", {
+    operation: "createLineItems",
+    orderId,
+    lineItemsCount: lineItemsData.length
+  });
 }
 
 /**
@@ -291,7 +324,7 @@ export async function updateOrderFulfillment(
   shopifyId: number,
   fulfillmentStatus: string,
 ) {
-  try {
+  return await measurePerformance(async () => {
     const updatedOrder = await prisma.order.update({
       where: { shopifyId: BigInt(shopifyId) },
       data: {
@@ -302,12 +335,22 @@ export async function updateOrderFulfillment(
       },
     });
 
-    console.log(`📋 Updated order fulfillment status to: ${fulfillmentStatus}`);
+    logger.info("Updated order fulfillment status", {
+      operation: "updateOrderFulfillment",
+      shopifyId,
+      fulfillmentStatus,
+      orderId: updatedOrder.id
+    });
     return updatedOrder;
-  } catch (error) {
-    console.error(`❌ Error updating order fulfillment:`, error);
+  }, "updateOrderFulfillment").catch(error => {
+    logger.error("Error updating order fulfillment", {
+      operation: "updateOrderFulfillment",
+      shopifyId,
+      fulfillmentStatus,
+      error: error instanceof Error ? error.message : String(error)
+    });
     throw error;
-  }
+  });
 }
 
 /**
