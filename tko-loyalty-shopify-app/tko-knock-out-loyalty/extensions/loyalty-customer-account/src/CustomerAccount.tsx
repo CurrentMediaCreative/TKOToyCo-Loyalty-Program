@@ -63,46 +63,102 @@ function CustomerAccountLoyaltyCard() {
   const showTierProgress = settings.show_tier_progress !== false;
   const showUnfulfilledPoints = settings.show_unfulfilled_points !== false;
 
-  // Fetch customer loyalty data
+  // Get API base URL dynamically
+  const getApiBaseUrl = () => {
+    // Try to detect the current app URL from the browser context
+    if (typeof window !== "undefined") {
+      const currentHost = window.location.hostname;
+
+      // If we're in development or local environment
+      if (
+        currentHost.includes("localhost") ||
+        currentHost.includes("127.0.0.1")
+      ) {
+        return "http://localhost:3000";
+      }
+
+      // If we're on the Shopify admin domain, try to construct the app URL
+      if (currentHost.includes("admin.shopify.com")) {
+        return "https://tkotoyco-loyalty-program.onrender.com";
+      }
+
+      // If we're on the customer account domain, use the production URL
+      if (currentHost.includes("shopify.com")) {
+        return "https://tkotoyco-loyalty-program.onrender.com";
+      }
+    }
+
+    // Default fallback
+    return "https://tkotoyco-loyalty-program.onrender.com";
+  };
+
+  // Fetch customer loyalty data with retry logic
   useEffect(() => {
     if (!customer?.email) {
       return;
     }
 
-    const fetchLoyaltyData = async () => {
+    const fetchLoyaltyData = async (retryCount = 0) => {
       setLoading(true);
       setError(null);
 
       try {
+        const baseUrl = getApiBaseUrl();
+        const apiUrl = `${baseUrl}/api/public/customer-loyalty?customerEmail=${encodeURIComponent(customer.email || "")}&cartTotal=0`;
+
+        console.log(`[Loyalty Extension] Attempting to fetch from: ${apiUrl}`);
+
         // Make API call to get customer loyalty data
-        const response = await fetch(
-          `https://tkotoyco-loyalty-program.onrender.com/api/public/customer-loyalty?customerEmail=${encodeURIComponent(customer.email || "")}&cartTotal=0`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
+        const response = await fetch(apiUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Customer-Email": customer.email || "",
           },
-        );
+        });
+
+        console.log(`[Loyalty Extension] Response status: ${response.status}`);
 
         if (!response.ok) {
-          throw new Error("Failed to load loyalty data");
+          const errorText = await response.text();
+          console.error(
+            `[Loyalty Extension] API Error: ${response.status} - ${errorText}`,
+          );
+          throw new Error(
+            `API Error: ${response.status} - ${response.statusText}`,
+          );
         }
 
         const data = await response.json();
+        console.log(`[Loyalty Extension] Response data:`, data);
 
         if (data.success) {
           setLoyaltyData(data);
         } else {
-          throw new Error(data.error || "Unknown error");
+          throw new Error(data.error || "API returned success: false");
         }
       } catch (err) {
-        console.error("Error loading loyalty data:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load loyalty data",
+        console.error(
+          `[Loyalty Extension] Error loading loyalty data (attempt ${retryCount + 1}):`,
+          err,
         );
+
+        // Retry logic - try up to 3 times with exponential backoff
+        if (retryCount < 2) {
+          const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+          console.log(`[Loyalty Extension] Retrying in ${delay}ms...`);
+          setTimeout(() => fetchLoyaltyData(retryCount + 1), delay);
+          return;
+        }
+
+        // Final error after all retries
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to load loyalty data";
+        setError(`${errorMessage} (after ${retryCount + 1} attempts)`);
       } finally {
-        setLoading(false);
+        if (retryCount === 0) {
+          setLoading(false);
+        }
       }
     };
 
@@ -126,14 +182,25 @@ function CustomerAccountLoyaltyCard() {
     );
   }
 
-  // Show error state
+  // Show error state with debug info
   if (error) {
     return (
       <Card>
         <BlockStack spacing="tight">
           <Text emphasis="bold">{title}</Text>
           <Banner status="critical">
-            <Text>Unable to load loyalty information: {error}</Text>
+            <BlockStack spacing="tight">
+              <Text>Unable to load loyalty information</Text>
+              <Text size="small" appearance="subdued">
+                Error: {error}
+              </Text>
+              <Text size="small" appearance="subdued">
+                API URL: {getApiBaseUrl()}/api/public/customer-loyalty
+              </Text>
+              <Text size="small" appearance="subdued">
+                Customer Email: {customer?.email || "Not available"}
+              </Text>
+            </BlockStack>
           </Banner>
         </BlockStack>
       </Card>
