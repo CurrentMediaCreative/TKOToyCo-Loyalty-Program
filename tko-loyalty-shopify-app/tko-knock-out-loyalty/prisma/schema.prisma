@@ -74,6 +74,7 @@ model Customer {
   isActive      Boolean            @default(true) // Active in last 30 days
   totalStoreCreditUsed Decimal     @default(0.00) @db.Decimal(10, 2) // Total store credit used across all orders
   loyaltyEligibleSpend Decimal     @default(0.00) @db.Decimal(10, 2) // Total spend minus store credit usage
+  unfulfilledPoints Float          @default(0) // Points from orders not yet fulfilled
   tier          Tier?              @relation(fields: [tierId], references: [id])
   transactions  PointTransaction[]
   pendingOrders PendingOrder[]
@@ -127,6 +128,10 @@ model Order {
   // Tracking
   lastSyncAt        DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
+  
+  // Points tracking
+  pointsAwarded     Float      @default(0) // Points awarded when order is fulfilled
+  pointsStatus      String     @default("pending") // Status: "pending", "awarded", "cancelled"
   
   // Relations
   lineItems         LineItem[]

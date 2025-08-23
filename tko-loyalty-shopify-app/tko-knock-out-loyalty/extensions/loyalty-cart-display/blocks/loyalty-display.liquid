@@ -431,6 +431,11 @@
               <div class="tko-customer-name">${data.customer.name || 'Valued Customer'}</div>
               <div class="tko-customer-tier">${data.customer.tier}</div>
               <div class="tko-points-display">${data.customer.totalPoints.toLocaleString()} Points</div>
+              ${data.customer.unfulfilledPoints > 0 ? `
+                <div style="font-size: 0.9rem; color: #cccccc; margin-bottom: 10px;">
+                  + ${data.customer.unfulfilledPoints.toLocaleString()} pending points from unfulfilled orders
+                </div>
+              ` : ''}
               
               <div class="tko-progress-container">
                 <div class="tko-progress-label">

@@ -11,18 +11,35 @@ import {
 } from "@shopify/ui-extensions-react/checkout";
 import { useState, useEffect } from "react";
 
-interface PointsCalculation {
-  spendPoints: number;
-  bonusPoints: number;
-  totalPoints: number;
-  bonusEligibleAmount: number;
-  appliedEvents: Array<{
-    eventId: string;
-    eventName: string;
+interface CustomerLoyaltyResponse {
+  success: boolean;
+  customer?: {
+    id: string;
+    name: string;
+    email: string;
+    tier: string;
+    totalPoints: number;
+    unfulfilledPoints: number;
+    tierProgress: {
+      percentage: number;
+      current: number;
+      needed: number;
+      nextTier: string | null;
+    };
+  };
+  cartCalculation?: {
+    cartTotal: number;
+    basePoints: number;
     bonusPoints: number;
-    bonusPercentage: number;
-  }>;
-  activeEventsCount: number;
+    totalPoints: number;
+    appliedEvents: Array<{
+      eventId: string;
+      eventName: string;
+      bonusPoints: number;
+      bonusPercentage: number;
+    }>;
+  };
+  error?: string;
 }
 
 export default reactExtension("purchase.checkout.block.render", () => (
@@ -35,7 +52,8 @@ function Extension() {
   const customer = useCustomer();
 
   // State for points calculation
-  const [pointsData, setPointsData] = useState<PointsCalculation | null>(null);
+  const [loyaltyData, setLoyaltyData] =
+    useState<CustomerLoyaltyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,15 +102,15 @@ function Extension() {
         }));
 
         // Make API call to calculate points using public endpoint
-        const response = await fetch("/api/public/calculate-points", {
+        const response = await fetch("/api/public/customer-loyalty", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            cartLines: apiCartLines,
-            subtotal: subtotal,
-            customerId: customer?.id,
+            cartTotal: subtotal,
+            cartItems: apiCartLines,
+            customerEmail: customer?.email,
           }),
         });
 
@@ -103,7 +121,7 @@ function Extension() {
         const data = await response.json();
 
         if (data.success) {
-          setPointsData(data);
+          setLoyaltyData(data);
         } else {
           throw new Error(data.error || "Unknown error");
         }
@@ -114,14 +132,16 @@ function Extension() {
         );
 
         // Fallback to simple calculation
-        const spendPoints = Math.floor(subtotal);
-        setPointsData({
-          spendPoints,
-          bonusPoints: 0,
-          totalPoints: spendPoints,
-          bonusEligibleAmount: subtotal,
-          appliedEvents: [],
-          activeEventsCount: 0,
+        const basePoints = Math.floor(subtotal);
+        setLoyaltyData({
+          success: true,
+          cartCalculation: {
+            cartTotal: subtotal,
+            basePoints,
+            bonusPoints: 0,
+            totalPoints: basePoints,
+            appliedEvents: [],
+          },
         });
       } finally {
         setLoading(false);
@@ -137,7 +157,10 @@ function Extension() {
   }
 
   // Don't show if no points would be earned
-  if (!pointsData || pointsData.totalPoints === 0) {
+  if (
+    !loyaltyData?.cartCalculation ||
+    loyaltyData.cartCalculation.totalPoints === 0
+  ) {
     return null;
   }
 
@@ -150,23 +173,41 @@ function Extension() {
     );
   }
 
+  const cartCalc = loyaltyData.cartCalculation;
+
   return (
     <Banner status="success">
       <BlockStack spacing="tight">
         <Text emphasis="bold">{title}</Text>
 
+        {/* Show customer tier info if available */}
+        {loyaltyData.customer && (
+          <BlockStack spacing="extraTight">
+            <Text appearance="subdued" size="small">
+              {loyaltyData.customer.name} • {loyaltyData.customer.tier} Tier •{" "}
+              {loyaltyData.customer.totalPoints} points
+            </Text>
+            {loyaltyData.customer.unfulfilledPoints > 0 && (
+              <Text appearance="subdued" size="small">
+                {loyaltyData.customer.unfulfilledPoints} unfulfilled points from
+                pending orders
+              </Text>
+            )}
+          </BlockStack>
+        )}
+
         {showBreakdown ? (
           <BlockStack spacing="extraTight">
             <InlineLayout columns={["fill", "auto"]}>
               <Text>Spend Points:</Text>
-              <Text emphasis="bold">{pointsData.spendPoints}</Text>
+              <Text emphasis="bold">{cartCalc.basePoints}</Text>
             </InlineLayout>
 
-            {pointsData.bonusPoints > 0 && (
+            {cartCalc.bonusPoints > 0 && (
               <InlineLayout columns={["fill", "auto"]}>
                 <Text>Bonus Points:</Text>
                 <Text emphasis="bold" appearance="accent">
-                  {pointsData.bonusPoints}
+                  {cartCalc.bonusPoints}
                 </Text>
               </InlineLayout>
             )}
@@ -176,7 +217,7 @@ function Extension() {
             <InlineLayout columns={["fill", "auto"]}>
               <Text emphasis="bold">Total Points:</Text>
               <Text emphasis="bold" appearance="accent">
-                {pointsData.totalPoints}
+                {cartCalc.totalPoints}
               </Text>
             </InlineLayout>
           </BlockStack>
@@ -184,17 +225,17 @@ function Extension() {
           <InlineLayout columns={["fill", "auto"]}>
             <Text>Points you'll earn:</Text>
             <Text emphasis="bold" appearance="accent">
-              {pointsData.totalPoints}
+              {cartCalc.totalPoints}
             </Text>
           </InlineLayout>
         )}
 
-        {pointsData.bonusPoints > 0 && pointsData.appliedEvents.length > 0 && (
+        {cartCalc.bonusPoints > 0 && cartCalc.appliedEvents.length > 0 && (
           <BlockStack spacing="extraTight">
             <Text appearance="subdued" size="small">
               🎉 Active promotions:
             </Text>
-            {pointsData.appliedEvents.map((event, index) => (
+            {cartCalc.appliedEvents.map((event: any, index: number) => (
               <Text key={event.eventId} appearance="subdued" size="small">
                 • {event.eventName}: +{event.bonusPoints} points (
                 {event.bonusPercentage}% bonus)
@@ -203,12 +244,11 @@ function Extension() {
           </BlockStack>
         )}
 
-        {pointsData.bonusPoints > 0 &&
-          pointsData.appliedEvents.length === 0 && (
-            <Text appearance="subdued" size="small">
-              🎉 You're earning bonus points from active promotions!
-            </Text>
-          )}
+        {cartCalc.bonusPoints > 0 && cartCalc.appliedEvents.length === 0 && (
+          <Text appearance="subdued" size="small">
+            🎉 You're earning bonus points from active promotions!
+          </Text>
+        )}
 
         {!customer && (
           <Text appearance="subdued" size="small">

@@ -1,0 +1,36 @@
+# Learn more about configuring your checkout UI extension:
+# https://shopify.dev/api/checkout-extensions/checkout/configuration
+
+api_version = "2025-04"
+
+[[extensions]]
+type = "customer_account_ui_extension"
+name = "loyalty-customer-account"
+handle = "loyalty-customer-account"
+
+[extensions.targeting]
+target = "customer-account.order-status.block.render"
+
+[extensions.capabilities]
+api_access = true
+block_progress = false
+network_access = true
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "title"
+type = "single_line_text_field"
+name = "Title"
+description = "The title displayed in the loyalty card"
+
+[[extensions.settings.fields]]
+key = "show_tier_progress"
+type = "boolean"
+name = "Show Tier Progress"
+description = "Display progress towards next tier"
+
+[[extensions.settings.fields]]
+key = "show_unfulfilled_points"
+type = "boolean"
+name = "Show Unfulfilled Points"
+description = "Display points from pending orders"

@@ -158,10 +158,12 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
   // FIXED: Use Shopify GraphQL API to get accurate customer total spend
   // This replaces the unreliable webhook payload logic that was showing $0.00
   let totalSpend = 0;
-  
+
   try {
-    console.log(`🔍 Fetching accurate customer data from Shopify API for fulfilled order...`);
-    
+    console.log(
+      `🔍 Fetching accurate customer data from Shopify API for fulfilled order...`,
+    );
+
     const customerQuery = `
       query GetCustomerForLoyalty($customerId: ID!) {
         customer(id: $customerId) {
@@ -174,33 +176,39 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
         }
       }
     `;
-    
+
     const response = await admin.graphql(customerQuery, {
-      variables: { customerId: `gid://shopify/Customer/${customer.id}` }
+      variables: { customerId: `gid://shopify/Customer/${customer.id}` },
     });
-    
+
     const result = await response.json();
-    
+
     if (result.data?.customer) {
       const shopifyCustomer = result.data.customer;
       // FIXED: amountSpent.amount is in dollars (not cents), use directly for 1:1 points system
-      const totalSpendDollars = parseFloat(shopifyCustomer.amountSpent?.amount || "0");
+      const totalSpendDollars = parseFloat(
+        shopifyCustomer.amountSpent?.amount || "0",
+      );
       totalSpend = Math.round(totalSpendDollars); // Round dollars to points (1:1 ratio)
-      
+
       console.log(`✅ Shopify API customer data for fulfilled order:`);
-      console.log(`   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`);
+      console.log(
+        `   💰 Accurate total spend: $${totalSpendDollars.toFixed(2)} → ${totalSpend} points`,
+      );
     } else {
       throw new Error(`No customer data returned from Shopify API`);
     }
   } catch (error) {
     console.error(`❌ Error fetching customer data from Shopify API:`, error);
     console.log(`⚠️ Falling back to webhook payload data (may be inaccurate)`);
-    
+
     // Fallback to webhook data if API fails
     const rawTotalSpend = parseFloat(customer.total_spent || "0");
     totalSpend = Math.round(rawTotalSpend);
-    
-    console.log(`   📊 Fallback total spend: $${rawTotalSpend.toFixed(2)} → ${totalSpend} points`);
+
+    console.log(
+      `   📊 Fallback total spend: $${rawTotalSpend.toFixed(2)} → ${totalSpend} points`,
+    );
   }
 
   // Create or update customer in our database
@@ -257,11 +265,16 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
   console.log(`🔍 Fetching collections for ${productIds.length} products...`);
 
   try {
-    productCollections = await fetchProductCollections(admin, productIds);
-    collectionFetchSuccess = true;
-    console.log(
-      `✅ Successfully fetched collections for ${Object.keys(productCollections).length} products`,
-    );
+    const collectionsResult = await fetchProductCollections(admin, productIds);
+    if (collectionsResult.success && collectionsResult.data) {
+      productCollections = collectionsResult.data;
+      collectionFetchSuccess = true;
+      console.log(
+        `✅ Successfully fetched collections for ${Object.keys(productCollections).length} products`,
+      );
+    } else {
+      throw new Error(collectionsResult.error || "Failed to fetch collections");
+    }
   } catch (error) {
     console.error("❌ Error fetching product collections:", error);
     console.log(
@@ -410,6 +423,64 @@ async function processFulfilledOrder(orderData: ShopifyOrder, admin: any) {
         `   ℹ️ Collection data unavailable - collection-based events were skipped`,
       );
     }
+  }
+
+  // Calculate total points to award (base spend points + bonus points)
+  const baseSpendPoints = Math.round(orderAmount); // 1:1 ratio for spend points
+  const totalPointsToAward = baseSpendPoints + bonusPoints;
+
+  console.log(`🎯 Points calculation for order fulfillment:`);
+  console.log(`   💰 Order amount: $${orderAmount.toFixed(2)}`);
+  console.log(`   📊 Base spend points: ${baseSpendPoints}`);
+  console.log(`   🎁 Bonus points: ${bonusPoints}`);
+  console.log(`   🏆 Total points to award: ${totalPointsToAward}`);
+
+  // Update order status and award points
+  try {
+    const { PrismaClient } = await import("@prisma/client");
+    const prisma = new PrismaClient();
+
+    // Check if points have already been awarded for this order
+    const existingOrder = await prisma.order.findFirst({
+      where: { shopifyId: BigInt(orderData.id) },
+      select: { pointsStatus: true, pointsAwarded: true },
+    });
+
+    if (existingOrder?.pointsStatus === "awarded") {
+      console.log(
+        `⚠️ Points already awarded for order ${orderId}, skipping point award`,
+      );
+      await prisma.$disconnect();
+    } else {
+      // Start transaction to ensure data consistency
+      await prisma.$transaction(async (tx) => {
+        // Update order with points awarded
+        await tx.order.updateMany({
+          where: { shopifyId: BigInt(orderData.id) },
+          data: {
+            pointsAwarded: totalPointsToAward,
+            pointsStatus: "awarded",
+            fulfilledAt: new Date(),
+          },
+        });
+
+        // Update customer: add points to total and subtract from unfulfilled
+        await tx.customer.update({
+          where: { id: loyaltyCustomer.id },
+          data: {
+            totalPoints: { increment: totalPointsToAward },
+            unfulfilledPoints: { decrement: totalPointsToAward },
+          },
+        });
+
+        console.log(`✅ Updated order and customer points in database`);
+      });
+
+      await prisma.$disconnect();
+    }
+  } catch (error) {
+    console.error(`❌ Error updating order and customer points:`, error);
+    throw error;
   }
 
   // Create bonus point transactions with enhanced error handling and duplicate prevention

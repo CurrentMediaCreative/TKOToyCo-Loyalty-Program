@@ -9,6 +9,13 @@ interface CustomerLoyaltyResponse {
     email: string;
     tier: string;
     totalPoints: number;
+    unfulfilledPoints: number;
+    tierProgress: {
+      percentage: number;
+      current: number;
+      needed: number;
+      nextTier: string | null;
+    };
   };
   cartCalculation?: {
     cartTotal: number;
@@ -26,35 +33,86 @@ interface CustomerLoyaltyResponse {
 }
 
 /**
- * Get customer by email from database
+ * Get customer by email from database with unfulfilled points and tier progress
  */
 async function getCustomerByEmail(email: string) {
   try {
     const customer = await db.customer.findFirst({
-      where: { email },
+      where: {
+        OR: [{ email }, { emails: { has: email } }],
+      },
       select: {
         id: true,
         firstName: true,
         lastName: true,
         email: true,
+        emails: true,
         totalPoints: true,
+        unfulfilledPoints: true,
         tier: {
           select: {
             name: true,
+            minPoints: true,
+            maxPoints: true,
           },
         },
       },
     });
 
     if (customer) {
+      // Get all tiers to calculate progress
+      const allTiers = await db.tier.findMany({
+        orderBy: { minPoints: "asc" },
+        select: {
+          name: true,
+          minPoints: true,
+          maxPoints: true,
+        },
+      });
+
+      // Calculate tier progress
+      const currentTier = customer.tier;
+      const currentPoints = customer.totalPoints || 0;
+      let tierProgress = {
+        percentage: 100,
+        current: currentPoints,
+        needed: 0,
+        nextTier: null as string | null,
+      };
+
+      if (currentTier && allTiers.length > 0) {
+        // Find next tier
+        const nextTier = allTiers.find(
+          (tier) => tier.minPoints > currentPoints,
+        );
+
+        if (nextTier) {
+          const pointsNeeded = nextTier.minPoints - currentPoints;
+          const tierRange = nextTier.minPoints - currentTier.minPoints;
+          const progress =
+            tierRange > 0
+              ? ((currentPoints - currentTier.minPoints) / tierRange) * 100
+              : 100;
+
+          tierProgress = {
+            percentage: Math.min(Math.max(progress, 0), 100),
+            current: currentPoints,
+            needed: pointsNeeded,
+            nextTier: nextTier.name,
+          };
+        }
+      }
+
       return {
         id: customer.id,
         name:
           `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
           "Valued Customer",
-        email: customer.email || "",
+        email: customer.email || customer.emails[0] || "",
         tier: customer.tier?.name || "Featherweight",
         totalPoints: customer.totalPoints || 0,
+        unfulfilledPoints: customer.unfulfilledPoints || 0,
+        tierProgress,
       };
     }
 
