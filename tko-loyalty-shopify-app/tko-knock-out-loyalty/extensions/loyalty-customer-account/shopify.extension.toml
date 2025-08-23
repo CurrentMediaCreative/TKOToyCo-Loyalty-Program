@@ -1,15 +1,16 @@
-# Learn more about configuring your checkout UI extension:
-# https://shopify.dev/api/checkout-extensions/checkout/configuration
+# Learn more about configuring your customer account UI extension:
+# https://shopify.dev/docs/api/customer-account-ui-extensions
 
-api_version = "2025-04"
+api_version = "2025-07"
 
 [[extensions]]
-type = "customer_account_ui_extension"
+type = "ui_extension"
 name = "loyalty-customer-account"
 handle = "loyalty-customer-account"
 
 [extensions.targeting]
 target = "customer-account.order-status.block.render"
+module = "./src/CustomerAccount.tsx"
 
 [extensions.capabilities]
 api_access = true
