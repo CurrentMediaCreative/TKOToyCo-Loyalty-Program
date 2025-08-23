@@ -17,6 +17,35 @@ api_access = true
 block_progress = false
 network_access = true
 
+[extensions.metafields]
+[[extensions.metafields.customer]]
+namespace = "tko_loyalty"
+key = "tier_name"
+
+[[extensions.metafields.customer]]
+namespace = "tko_loyalty"
+key = "tier_level"
+
+[[extensions.metafields.customer]]
+namespace = "tko_loyalty"
+key = "total_spend"
+
+[[extensions.metafields.customer]]
+namespace = "tko_loyalty"
+key = "spend_points"
+
+[[extensions.metafields.customer]]
+namespace = "tko_loyalty"
+key = "bonus_points"
+
+[[extensions.metafields.customer]]
+namespace = "tko_loyalty"
+key = "total_points"
+
+[[extensions.metafields.customer]]
+namespace = "tko_loyalty"
+key = "tier_benefits"
+
 [extensions.settings]
 [[extensions.settings.fields]]
 key = "title"

@@ -2,6 +2,7 @@ import {
   reactExtension,
   useSettings,
   useCustomer,
+  useAppMetafields,
   Banner,
   BlockStack,
   Text,
@@ -12,35 +13,29 @@ import {
 } from "@shopify/ui-extensions-react/customer-account";
 import { useState, useEffect } from "react";
 
-interface CustomerLoyaltyResponse {
-  success: boolean;
-  customer?: {
-    id: string;
-    name: string;
-    email: string;
-    tier: string;
-    totalPoints: number;
-    unfulfilledPoints: number;
-    tierProgress: {
-      percentage: number;
-      current: number;
-      needed: number;
-      nextTier: string | null;
-    };
+// Tier configuration matching the database
+const TIER_CONFIG = {
+  1: { name: "Featherweight", minPoints: 0, maxPoints: 499 },
+  2: { name: "Lightweight", minPoints: 500, maxPoints: 999 },
+  3: { name: "Welterweight", minPoints: 1000, maxPoints: 2499 },
+  4: { name: "Heavyweight", minPoints: 2500, maxPoints: 4999 },
+  5: { name: "Reigning Champion", minPoints: 5000, maxPoints: 999999 },
+};
+
+interface LoyaltyData {
+  tierName: string;
+  tierLevel: number;
+  totalSpend: number;
+  spendPoints: number;
+  bonusPoints: number;
+  totalPoints: number;
+  tierBenefits: string[];
+  tierProgress: {
+    percentage: number;
+    current: number;
+    needed: number;
+    nextTier: string | null;
   };
-  cartCalculation?: {
-    cartTotal: number;
-    basePoints: number;
-    bonusPoints: number;
-    totalPoints: number;
-    appliedEvents: Array<{
-      eventId: string;
-      eventName: string;
-      bonusPoints: number;
-      bonusPercentage: number;
-    }>;
-  };
-  error?: string;
 }
 
 export default reactExtension(
@@ -51,11 +46,11 @@ export default reactExtension(
 function CustomerAccountLoyaltyCard() {
   const settings = useSettings();
   const customer = useCustomer();
+  const metafields = useAppMetafields();
 
   // State for loyalty data
-  const [loyaltyData, setLoyaltyData] =
-    useState<CustomerLoyaltyResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loyaltyData, setLoyaltyData] = useState<LoyaltyData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Get settings
@@ -63,109 +58,149 @@ function CustomerAccountLoyaltyCard() {
   const showTierProgress = settings.show_tier_progress !== false;
   const showUnfulfilledPoints = settings.show_unfulfilled_points !== false;
 
-  // Get API base URL dynamically
-  const getApiBaseUrl = () => {
-    // Try to detect the current app URL from the browser context
-    if (typeof window !== "undefined") {
-      const currentHost = window.location.hostname;
+  // Calculate tier progress
+  const calculateTierProgress = (currentPoints: number, tierLevel: number) => {
+    const currentTier = TIER_CONFIG[tierLevel as keyof typeof TIER_CONFIG];
+    const nextTierLevel = tierLevel + 1;
+    const nextTier = TIER_CONFIG[nextTierLevel as keyof typeof TIER_CONFIG];
 
-      // If we're in development or local environment
-      if (
-        currentHost.includes("localhost") ||
-        currentHost.includes("127.0.0.1")
-      ) {
-        return "http://localhost:3000";
-      }
-
-      // If we're on the Shopify admin domain, try to construct the app URL
-      if (currentHost.includes("admin.shopify.com")) {
-        return "https://tkotoyco-loyalty-program.onrender.com";
-      }
-
-      // If we're on the customer account domain, use the production URL
-      if (currentHost.includes("shopify.com")) {
-        return "https://tkotoyco-loyalty-program.onrender.com";
-      }
+    if (!nextTier || tierLevel >= 5) {
+      // Already at highest tier
+      return {
+        percentage: 100,
+        current: currentPoints,
+        needed: 0,
+        nextTier: null,
+      };
     }
 
-    // Default fallback
-    return "https://tkotoyco-loyalty-program.onrender.com";
+    const pointsInCurrentTier = currentPoints - currentTier.minPoints;
+    const pointsNeededForNextTier = nextTier.minPoints - currentTier.minPoints;
+    const percentage = Math.min(
+      (pointsInCurrentTier / pointsNeededForNextTier) * 100,
+      100,
+    );
+
+    return {
+      percentage: Math.max(percentage, 0),
+      current: currentPoints,
+      needed: nextTier.minPoints - currentPoints,
+      nextTier: nextTier.name,
+    };
   };
 
-  // Fetch customer loyalty data with retry logic
+  // Process metafields data
   useEffect(() => {
     if (!customer?.email) {
+      setLoading(false);
       return;
     }
 
-    const fetchLoyaltyData = async (retryCount = 0) => {
-      setLoading(true);
-      setError(null);
+    try {
+      console.log("[Loyalty Extension] Processing metafields:", metafields);
 
-      try {
-        const baseUrl = getApiBaseUrl();
-        const apiUrl = `${baseUrl}/api/public/customer-loyalty?customerEmail=${encodeURIComponent(customer.email || "")}&cartTotal=0`;
+      // Extract loyalty data from metafields
+      const tierName = String(
+        metafields.find(
+          (m) =>
+            m.metafield.namespace === "tko_loyalty" &&
+            m.metafield.key === "tier_name",
+        )?.metafield.value || "Featherweight",
+      );
 
-        console.log(`[Loyalty Extension] Attempting to fetch from: ${apiUrl}`);
+      const tierLevel = parseInt(
+        String(
+          metafields.find(
+            (m) =>
+              m.metafield.namespace === "tko_loyalty" &&
+              m.metafield.key === "tier_level",
+          )?.metafield.value || "1",
+        ),
+      );
 
-        // Make API call to get customer loyalty data
-        const response = await fetch(apiUrl, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Customer-Email": customer.email || "",
-          },
-        });
+      const totalSpend = parseFloat(
+        String(
+          metafields.find(
+            (m) =>
+              m.metafield.namespace === "tko_loyalty" &&
+              m.metafield.key === "total_spend",
+          )?.metafield.value || "0",
+        ),
+      );
 
-        console.log(`[Loyalty Extension] Response status: ${response.status}`);
+      const spendPoints = parseFloat(
+        String(
+          metafields.find(
+            (m) =>
+              m.metafield.namespace === "tko_loyalty" &&
+              m.metafield.key === "spend_points",
+          )?.metafield.value || "0",
+        ),
+      );
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(
-            `[Loyalty Extension] API Error: ${response.status} - ${errorText}`,
-          );
-          throw new Error(
-            `API Error: ${response.status} - ${response.statusText}`,
-          );
-        }
+      const bonusPoints = parseFloat(
+        String(
+          metafields.find(
+            (m) =>
+              m.metafield.namespace === "tko_loyalty" &&
+              m.metafield.key === "bonus_points",
+          )?.metafield.value || "0",
+        ),
+      );
 
-        const data = await response.json();
-        console.log(`[Loyalty Extension] Response data:`, data);
+      const totalPoints = parseFloat(
+        String(
+          metafields.find(
+            (m) =>
+              m.metafield.namespace === "tko_loyalty" &&
+              m.metafield.key === "total_points",
+          )?.metafield.value || "0",
+        ),
+      );
 
-        if (data.success) {
-          setLoyaltyData(data);
-        } else {
-          throw new Error(data.error || "API returned success: false");
-        }
-      } catch (err) {
-        console.error(
-          `[Loyalty Extension] Error loading loyalty data (attempt ${retryCount + 1}):`,
-          err,
-        );
+      const tierBenefitsRaw = String(
+        metafields.find(
+          (m) =>
+            m.metafield.namespace === "tko_loyalty" &&
+            m.metafield.key === "tier_benefits",
+        )?.metafield.value || "",
+      );
 
-        // Retry logic - try up to 3 times with exponential backoff
-        if (retryCount < 2) {
-          const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
-          console.log(`[Loyalty Extension] Retrying in ${delay}ms...`);
-          setTimeout(() => fetchLoyaltyData(retryCount + 1), delay);
-          return;
-        }
-
-        // Final error after all retries
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to load loyalty data";
-        setError(`${errorMessage} (after ${retryCount + 1} attempts)`);
-      } finally {
-        if (retryCount === 0) {
-          setLoading(false);
+      let tierBenefits: string[] = [];
+      if (tierBenefitsRaw) {
+        try {
+          tierBenefits = JSON.parse(tierBenefitsRaw);
+        } catch {
+          tierBenefits = [];
         }
       }
-    };
 
-    fetchLoyaltyData();
-  }, [customer?.email]);
+      // Calculate tier progress
+      const tierProgress = calculateTierProgress(totalPoints, tierLevel);
 
-  // Don't show if no customer or no loyalty data
+      const processedData: LoyaltyData = {
+        tierName,
+        tierLevel,
+        totalSpend,
+        spendPoints,
+        bonusPoints,
+        totalPoints,
+        tierBenefits,
+        tierProgress,
+      };
+
+      console.log("[Loyalty Extension] Processed loyalty data:", processedData);
+      setLoyaltyData(processedData);
+      setError(null);
+    } catch (err) {
+      console.error("[Loyalty Extension] Error processing metafields:", err);
+      setError("Failed to process loyalty data");
+    } finally {
+      setLoading(false);
+    }
+  }, [customer?.email, metafields]);
+
+  // Don't show if no customer
   if (!customer?.email) {
     return null;
   }
@@ -182,7 +217,7 @@ function CustomerAccountLoyaltyCard() {
     );
   }
 
-  // Show error state with debug info
+  // Show error state
   if (error) {
     return (
       <Card>
@@ -195,10 +230,10 @@ function CustomerAccountLoyaltyCard() {
                 Error: {error}
               </Text>
               <Text size="small" appearance="subdued">
-                API URL: {getApiBaseUrl()}/api/public/customer-loyalty
+                Customer Email: {customer?.email || "Not available"}
               </Text>
               <Text size="small" appearance="subdued">
-                Customer Email: {customer?.email || "Not available"}
+                Metafields Count: {metafields.length}
               </Text>
             </BlockStack>
           </Banner>
@@ -208,7 +243,7 @@ function CustomerAccountLoyaltyCard() {
   }
 
   // Show if no loyalty data found
-  if (!loyaltyData?.customer) {
+  if (!loyaltyData || loyaltyData.totalPoints === 0) {
     return (
       <Card>
         <BlockStack spacing="tight">
@@ -224,7 +259,11 @@ function CustomerAccountLoyaltyCard() {
     );
   }
 
-  const customerData = loyaltyData.customer;
+  // Get customer name
+  const customerName =
+    customer.firstName && customer.lastName
+      ? `${customer.firstName} ${customer.lastName}`.trim()
+      : customer.firstName || customer.lastName || "Valued Customer";
 
   return (
     <Card>
@@ -249,7 +288,7 @@ function CustomerAccountLoyaltyCard() {
                 Member
               </Text>
               <Text emphasis="bold" size="medium">
-                {customerData.name}
+                {customerName}
               </Text>
             </BlockStack>
             <BlockStack spacing="extraTight">
@@ -257,7 +296,7 @@ function CustomerAccountLoyaltyCard() {
                 Current Tier
               </Text>
               <Text emphasis="bold" appearance="accent" size="medium">
-                {customerData.tier}
+                {loyaltyData.tierName}
               </Text>
             </BlockStack>
           </InlineLayout>
@@ -269,58 +308,58 @@ function CustomerAccountLoyaltyCard() {
                 Total Points
               </Text>
               <Text emphasis="bold" size="large">
-                {customerData.totalPoints.toLocaleString()}
+                {loyaltyData.totalPoints.toLocaleString()}
               </Text>
             </BlockStack>
-            {showUnfulfilledPoints && customerData.unfulfilledPoints > 0 && (
+            {showUnfulfilledPoints && loyaltyData.bonusPoints > 0 && (
               <BlockStack spacing="extraTight">
                 <Text size="small" appearance="subdued">
-                  Pending
+                  Bonus Points
                 </Text>
                 <Text emphasis="bold" appearance="subdued">
-                  +{customerData.unfulfilledPoints.toLocaleString()}
+                  +{loyaltyData.bonusPoints.toLocaleString()}
                 </Text>
               </BlockStack>
             )}
           </InlineLayout>
         </BlockStack>
 
-        {/* Unfulfilled Points Details */}
-        {showUnfulfilledPoints && customerData.unfulfilledPoints > 0 && (
+        {/* Points Breakdown */}
+        {loyaltyData.bonusPoints > 0 && (
           <BlockStack spacing="extraTight">
             <Divider />
             <Banner status="info">
               <Text size="small">
-                You have {customerData.unfulfilledPoints.toLocaleString()}{" "}
-                pending points from orders awaiting fulfillment
+                You have {loyaltyData.bonusPoints.toLocaleString()} bonus points
+                from special promotions and events!
               </Text>
             </Banner>
           </BlockStack>
         )}
 
         {/* Tier Progress - Enhanced */}
-        {showTierProgress && customerData.tierProgress.nextTier && (
+        {showTierProgress && loyaltyData.tierProgress.nextTier && (
           <BlockStack spacing="base">
             <Divider />
             <BlockStack spacing="tight">
               <InlineLayout columns={["fill", "auto"]}>
                 <Text emphasis="bold" size="medium">
-                  Progress to {customerData.tierProgress.nextTier}
+                  Progress to {loyaltyData.tierProgress.nextTier}
                 </Text>
                 <Text emphasis="bold" appearance="accent">
-                  {customerData.tierProgress.percentage.toFixed(0)}%
+                  {loyaltyData.tierProgress.percentage.toFixed(0)}%
                 </Text>
               </InlineLayout>
 
-              <Progress value={customerData.tierProgress.percentage / 100} />
+              <Progress value={loyaltyData.tierProgress.percentage / 100} />
 
               <InlineLayout columns={["fill", "auto"]}>
                 <Text size="small" appearance="subdued">
-                  {customerData.tierProgress.needed.toLocaleString()} more
-                  points needed
+                  {loyaltyData.tierProgress.needed.toLocaleString()} more points
+                  needed
                 </Text>
                 <Text size="small" appearance="subdued">
-                  {customerData.tierProgress.current.toLocaleString()} current
+                  {loyaltyData.tierProgress.current.toLocaleString()} current
                 </Text>
               </InlineLayout>
             </BlockStack>
@@ -328,7 +367,7 @@ function CustomerAccountLoyaltyCard() {
         )}
 
         {/* Tier Achievement Message - Enhanced */}
-        {showTierProgress && !customerData.tierProgress.nextTier && (
+        {showTierProgress && !loyaltyData.tierProgress.nextTier && (
           <BlockStack spacing="tight">
             <Divider />
             <Banner status="success">
@@ -342,6 +381,23 @@ function CustomerAccountLoyaltyCard() {
           </BlockStack>
         )}
 
+        {/* Tier Benefits */}
+        {loyaltyData.tierBenefits.length > 0 && (
+          <BlockStack spacing="tight">
+            <Divider />
+            <Text emphasis="bold" size="medium">
+              Your {loyaltyData.tierName} Benefits
+            </Text>
+            <BlockStack spacing="extraTight">
+              {loyaltyData.tierBenefits.slice(0, 3).map((benefit, index) => (
+                <Text key={index} size="small" appearance="subdued">
+                  ✓ {benefit}
+                </Text>
+              ))}
+            </BlockStack>
+          </BlockStack>
+        )}
+
         {/* Footer Info - Enhanced */}
         <BlockStack spacing="extraTight">
           <Divider />
@@ -350,6 +406,9 @@ function CustomerAccountLoyaltyCard() {
           </Text>
           <Text size="small" appearance="subdued">
             ⏱️ Points are added when your orders are fulfilled
+          </Text>
+          <Text size="small" appearance="subdued">
+            🎯 Total Spend: ${loyaltyData.totalSpend.toLocaleString()}
           </Text>
         </BlockStack>
       </BlockStack>
