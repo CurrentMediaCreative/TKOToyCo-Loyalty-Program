@@ -1219,15 +1219,15 @@ export async function syncAllOrdersSimple(
     let cursor: string | null = null;
     let batchCount = 0;
 
-    while (hasNextPage && batchCount < 20) {
-      // Limit to 20 batches (1000 orders max)
+    while (hasNextPage) {
+      // Process all orders without artificial limits
       batchCount++;
       console.log(`📦 Processing batch ${batchCount}...`);
 
       const response: any = await admin.graphql(
         `
         query GetOrders${cursor ? `($cursor: String!)` : ""} {
-          orders(first: 50${cursor ? `, after: $cursor` : ""}) {
+          orders(first: 250${cursor ? `, after: $cursor` : ""}) {
             edges {
               node {
                 id
