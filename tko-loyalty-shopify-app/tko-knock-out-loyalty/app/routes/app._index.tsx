@@ -1,7 +1,12 @@
 // @ts-nocheck
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useActionData, Form, useFetcher } from "@remix-run/react";
+import {
+  useLoaderData,
+  useActionData,
+  Form,
+  useFetcher,
+} from "@remix-run/react";
 import { useState, useCallback } from "react";
 import {
   Page,
@@ -37,7 +42,7 @@ import { authenticate } from "../shopify.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 import { serializeBigInt } from "../utils/serialization";
 import { getDashboardMetrics } from "../services/dashboardMetrics.server";
-import { syncMissingOrders } from "../services/orderSync.server";
+import { syncMissingOrdersByNumber } from "../services/orderSync.server";
 import { getTiers } from "../services/tier.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -46,14 +51,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     // Use the optimized dashboard metrics service
     const dashboardResult = await getDashboardMetrics(admin);
-    
+
     // Check if the service call was successful
     if (!dashboardResult.success || !dashboardResult.data) {
-      throw new Error(dashboardResult.error || "Failed to load dashboard metrics");
+      throw new Error(
+        dashboardResult.error || "Failed to load dashboard metrics",
+      );
     }
-    
+
     const dashboardData = dashboardResult.data;
-    
+
     // Fetch all tiers with their benefits for the loyalty card
     const tiers = await getTiers();
 
@@ -97,12 +104,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   try {
-    console.log("🔄 Starting manual order sync...");
-    const syncResult = await syncMissingOrders(admin);
+    console.log("🔄 Starting smart gap-filling order sync...");
+    const syncResult = await syncMissingOrdersByNumber(admin);
 
     return json({
       success: true,
-      message: `Sync completed! Processed ${syncResult.processedOrders} orders, awarded ${syncResult.pointsAwarded} points.`,
+      message: `Smart sync completed! Found and processed ${syncResult.processedOrders} missing orders, awarded ${syncResult.pointsAwarded} points.`,
       syncResult,
     });
   } catch (error) {
@@ -118,8 +125,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Index() {
-  const { stats, tierCounts, todayCompetitors, monthCompetitors, tiers, error } =
-    useLoaderData<typeof loader>() as any;
+  const {
+    stats,
+    tierCounts,
+    todayCompetitors,
+    monthCompetitors,
+    tiers,
+    error,
+  } = useLoaderData<typeof loader>() as any;
   const actionData = useActionData<typeof action>();
 
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
@@ -177,74 +190,94 @@ export default function Index() {
 
   // Format today's competitors for DataTable
   const todayCompetitorRows = todayCompetitors.map((customer: any) => [
-    <InlineStack key={`name-${customer.id}`} gap="200" align="start">
-      <Text variant="bodyMd" as="span" fontWeight="semibold">
-        {customer.name}
+    (
+      <InlineStack key={`name-${customer.id}`} gap="200" align="start">
+        <Text variant="bodyMd" as="span" fontWeight="semibold">
+          {customer.name}
+        </Text>
+      </InlineStack>
+    ) as any,
+    (
+      <Badge
+        key={`tier-${customer.id}`}
+        tone={getTierColor(customer.tier) as any}
+        icon={getTierIcon(customer.tier)}
+      >
+        {customer.tier}
+      </Badge>
+    ) as any,
+    (
+      <Text
+        key={`spent-${customer.id}`}
+        variant="bodyMd"
+        as="span"
+        fontWeight="semibold"
+      >
+        ${customer.periodSpending.toFixed(2)}
       </Text>
-    </InlineStack> as any,
-    <Badge
-      key={`tier-${customer.id}`}
-      tone={getTierColor(customer.tier) as any}
-      icon={getTierIcon(customer.tier)}
-    >
-      {customer.tier}
-    </Badge> as any,
-    <Text
-      key={`spent-${customer.id}`}
-      variant="bodyMd"
-      as="span"
-      fontWeight="semibold"
-    >
-      ${customer.periodSpending.toFixed(2)}
-    </Text> as any,
-    <Text key={`orders-${customer.id}`} variant="bodyMd" as="span">
-      {customer.numberOfOrders || 0}
-    </Text> as any,
-    <Button
-      key={`view-${customer.id}`}
-      variant="tertiary"
-      size="slim"
-      icon={<Icon source={ViewIcon} />}
-      onClick={() => handleViewCustomer(customer)}
-    >
-      View
-    </Button> as any,
+    ) as any,
+    (
+      <Text key={`orders-${customer.id}`} variant="bodyMd" as="span">
+        {customer.numberOfOrders || 0}
+      </Text>
+    ) as any,
+    (
+      <Button
+        key={`view-${customer.id}`}
+        variant="tertiary"
+        size="slim"
+        icon={<Icon source={ViewIcon} />}
+        onClick={() => handleViewCustomer(customer)}
+      >
+        View
+      </Button>
+    ) as any,
   ]);
 
   // Format month competitors for DataTable
   const monthCompetitorRows = monthCompetitors.map((customer: any) => [
-    <InlineStack key={`name-${customer.id}`} gap="200" align="start">
-      <Text variant="bodyMd" as="span" fontWeight="semibold">
-        {customer.name}
+    (
+      <InlineStack key={`name-${customer.id}`} gap="200" align="start">
+        <Text variant="bodyMd" as="span" fontWeight="semibold">
+          {customer.name}
+        </Text>
+      </InlineStack>
+    ) as any,
+    (
+      <Badge
+        key={`tier-${customer.id}`}
+        tone={getTierColor(customer.tier) as any}
+        icon={getTierIcon(customer.tier)}
+      >
+        {customer.tier}
+      </Badge>
+    ) as any,
+    (
+      <Text
+        key={`spent-${customer.id}`}
+        variant="bodyMd"
+        as="span"
+        fontWeight="semibold"
+      >
+        ${customer.periodSpending.toFixed(2)}
       </Text>
-    </InlineStack> as any,
-    <Badge
-      key={`tier-${customer.id}`}
-      tone={getTierColor(customer.tier) as any}
-      icon={getTierIcon(customer.tier)}
-    >
-      {customer.tier}
-    </Badge> as any,
-    <Text
-      key={`spent-${customer.id}`}
-      variant="bodyMd"
-      as="span"
-      fontWeight="semibold"
-    >
-      ${customer.periodSpending.toFixed(2)}
-    </Text> as any,
-    <Text key={`orders-${customer.id}`} variant="bodyMd" as="span">
-      {customer.numberOfOrders || 0}
-    </Text> as any,
-    <Button
-      key={`view-${customer.id}`}
-      variant="tertiary"
-      size="slim"
-      icon={<Icon source={ViewIcon} />}
-      onClick={() => handleViewCustomer(customer)}
-    >
-      View
-    </Button> as any,
+    ) as any,
+    (
+      <Text key={`orders-${customer.id}`} variant="bodyMd" as="span">
+        {customer.numberOfOrders || 0}
+      </Text>
+    ) as any,
+    (
+      <Button
+        key={`view-${customer.id}`}
+        variant="tertiary"
+        size="slim"
+        icon={<Icon source={ViewIcon} />}
+        onClick={() => handleViewCustomer(customer)}
+      >
+        View
+      </Button>
+    ) as any,
   ]);
 
   if (error) {
@@ -310,7 +343,7 @@ export default function Index() {
                     onClick={() => {
                       storeCreditFetcher.submit(
                         {},
-                        { method: "post", action: "/api/sync-store-credit" }
+                        { method: "post", action: "/api/sync-store-credit" },
                       );
                     }}
                   >
@@ -367,22 +400,35 @@ export default function Index() {
         {/* Store Credit Sync Result Banner */}
         {storeCreditFetcher.data && (
           <Banner
-            title={(storeCreditFetcher.data as any)?.success ? "Store Credit Sync Successful" : "Store Credit Sync Failed"}
-            tone={(storeCreditFetcher.data as any)?.success ? "success" : "critical"}
+            title={
+              (storeCreditFetcher.data as any)?.success
+                ? "Store Credit Sync Successful"
+                : "Store Credit Sync Failed"
+            }
+            tone={
+              (storeCreditFetcher.data as any)?.success ? "success" : "critical"
+            }
             onDismiss={() => {}}
           >
             <BlockStack gap="100">
-              <Text as="p">{String((storeCreditFetcher.data as any)?.message || '')}</Text>
+              <Text as="p">
+                {String((storeCreditFetcher.data as any)?.message || "")}
+              </Text>
               {(storeCreditFetcher.data as any)?.data && (
                 <BlockStack gap="100">
                   <Text variant="bodySm" as="p">
-                    Orders processed: {(storeCreditFetcher.data as any)?.data?.ordersProcessed}
+                    Orders processed:{" "}
+                    {(storeCreditFetcher.data as any)?.data?.ordersProcessed}
                   </Text>
                   <Text variant="bodySm" as="p">
-                    Customers updated: {(storeCreditFetcher.data as any)?.data?.customersAffected}
+                    Customers updated:{" "}
+                    {(storeCreditFetcher.data as any)?.data?.customersAffected}
                   </Text>
                   <Text variant="bodySm" as="p">
-                    Total store credit found: ${(storeCreditFetcher.data as any)?.data?.totalStoreCreditFound?.toFixed(2) || '0.00'}
+                    Total store credit found: $
+                    {(
+                      storeCreditFetcher.data as any
+                    )?.data?.totalStoreCreditFound?.toFixed(2) || "0.00"}
                   </Text>
                 </BlockStack>
               )}

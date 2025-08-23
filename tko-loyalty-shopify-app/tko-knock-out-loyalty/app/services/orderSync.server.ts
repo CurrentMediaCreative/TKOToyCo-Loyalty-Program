@@ -137,13 +137,13 @@ export class OrderSyncService {
       logger.info("Last order found in database", {
         operation: "getLastOrderInDatabase",
         orderNumber: lastOrder.orderNumber,
-        createdAt: lastOrder.createdAt.toISOString()
+        createdAt: lastOrder.createdAt.toISOString(),
       });
       return lastOrder.createdAt;
     }
 
     logger.info("No orders found in database", {
-      operation: "getLastOrderInDatabase"
+      operation: "getLastOrderInDatabase",
     });
     return null;
   }
@@ -154,16 +154,19 @@ export class OrderSyncService {
   async syncMissingOrders(): Promise<SyncResult> {
     const startTime = Date.now();
     logger.info("Starting missing orders sync", {
-      operation: "syncMissingOrders"
+      operation: "syncMissingOrders",
     });
 
     const lastOrderDate = await this.getLastOrderInDatabase();
 
     if (!lastOrderDate) {
-      logger.warn("No orders in database - consider running full sync instead", {
-        operation: "syncMissingOrders",
-        recommendation: "full_sync"
-      });
+      logger.warn(
+        "No orders in database - consider running full sync instead",
+        {
+          operation: "syncMissingOrders",
+          recommendation: "full_sync",
+        },
+      );
       return {
         totalOrders: 0,
         processedOrders: 0,
@@ -189,7 +192,7 @@ export class OrderSyncService {
     const startTime = Date.now();
     logger.info("Syncing orders since date", {
       operation: "syncOrdersSince",
-      sinceDate: sinceDate.toISOString()
+      sinceDate: sinceDate.toISOString(),
     });
 
     let totalOrders = 0;
@@ -209,7 +212,7 @@ export class OrderSyncService {
         batchCount++;
         logger.info("Processing batch", {
           operation: "syncOrdersSince",
-          batchNumber: batchCount
+          batchNumber: batchCount,
         });
 
         try {
@@ -344,7 +347,7 @@ export class OrderSyncService {
           if (!ordersData) {
             logger.error("No order data returned from API", {
               operation: "syncOrdersSince",
-              batchNumber: batchCount
+              batchNumber: batchCount,
             });
             break;
           }
@@ -355,7 +358,7 @@ export class OrderSyncService {
           logger.info("Batch processing orders", {
             operation: "syncOrdersSince",
             batchNumber: batchCount,
-            ordersCount: orders.length
+            ordersCount: orders.length,
           });
 
           // Process each order
@@ -389,7 +392,7 @@ export class OrderSyncService {
                     operation: "syncOrdersSince",
                     customerShopifyId,
                     totalSpend,
-                    numberOfOrders
+                    numberOfOrders,
                   });
 
                   // Import createOrUpdateCustomer to ensure data consistency
@@ -438,14 +441,17 @@ export class OrderSyncService {
                     logger.info("Awarded points for order", {
                       operation: "syncOrdersSince",
                       bonusPoints: pointsResult.bonusPoints,
-                      orderNumber: shopifyOrder.number
+                      orderNumber: shopifyOrder.number,
                     });
                   }
                 } catch (pointsError) {
                   logger.error("Error processing points for order", {
                     operation: "syncOrdersSince",
                     orderNumber: shopifyOrder.number,
-                    error: pointsError instanceof Error ? pointsError.message : String(pointsError)
+                    error:
+                      pointsError instanceof Error
+                        ? pointsError.message
+                        : String(pointsError),
                   });
                   errors++;
                 }
@@ -454,7 +460,10 @@ export class OrderSyncService {
               logger.error("Error processing order", {
                 operation: "syncOrdersSince",
                 orderNumber: shopifyOrder.number,
-                error: orderError instanceof Error ? orderError.message : String(orderError)
+                error:
+                  orderError instanceof Error
+                    ? orderError.message
+                    : String(orderError),
               });
               errors++;
             }
@@ -467,7 +476,7 @@ export class OrderSyncService {
           logger.info("Batch complete", {
             operation: "syncOrdersSince",
             batchNumber: batchCount,
-            ordersProcessed: orders.length
+            ordersProcessed: orders.length,
           });
 
           // Small delay to respect API limits
@@ -476,7 +485,10 @@ export class OrderSyncService {
           logger.error("Error processing batch", {
             operation: "syncOrdersSince",
             batchNumber: batchCount,
-            error: batchError instanceof Error ? batchError.message : String(batchError)
+            error:
+              batchError instanceof Error
+                ? batchError.message
+                : String(batchError),
           });
           errors++;
           break;
@@ -495,8 +507,8 @@ export class OrderSyncService {
           fulfilledOrders,
           customersUpdated,
           pointsAwarded,
-          errors
-        }
+          errors,
+        },
       });
 
       return {
@@ -512,7 +524,7 @@ export class OrderSyncService {
     } catch (error) {
       logger.error("Fatal error in order sync", {
         operation: "syncOrdersSince",
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -655,6 +667,438 @@ export class OrderSyncService {
   }
 
   /**
+   * Smart gap-filling sync that identifies missing order numbers and syncs only those
+   */
+  async syncMissingOrdersByNumber(): Promise<SyncResult> {
+    const startTime = Date.now();
+    logger.info("Starting smart gap-filling order sync", {
+      operation: "syncMissingOrdersByNumber",
+    });
+
+    let totalOrders = 0;
+    let processedOrders = 0;
+    let fulfilledOrders = 0;
+    let customersUpdated = 0;
+    let pointsAwarded = 0;
+    let errors = 0;
+
+    const processedCustomers = new Set<string>();
+
+    try {
+      // Step 1: Get the highest order number from Shopify
+      logger.info("Getting highest order number from Shopify", {
+        operation: "syncMissingOrdersByNumber",
+      });
+
+      const highestOrderResponse = await this.admin.graphql(
+        `#graphql
+          query GetHighestOrderNumber {
+            orders(first: 1, sortKey: CREATED_AT, reverse: true) {
+              edges {
+                node {
+                  number
+                }
+              }
+            }
+          }`,
+      );
+
+      const highestOrderData = await highestOrderResponse.json();
+      const highestOrderNumber =
+        highestOrderData.data?.orders?.edges?.[0]?.node?.number;
+
+      if (!highestOrderNumber) {
+        logger.warn("No orders found in Shopify", {
+          operation: "syncMissingOrdersByNumber",
+        });
+        return {
+          totalOrders: 0,
+          processedOrders: 0,
+          fulfilledOrders: 0,
+          customersUpdated: 0,
+          pointsAwarded: 0,
+          errors: 0,
+          duration: Date.now() - startTime,
+          lastOrderDate: null,
+        };
+      }
+
+      logger.info("Found highest order number", {
+        operation: "syncMissingOrdersByNumber",
+        highestOrderNumber,
+      });
+
+      // Step 2: Get all existing order numbers from our database
+      const existingOrders = await prisma.order.findMany({
+        select: { orderNumber: true },
+        orderBy: { orderNumber: "asc" },
+      });
+
+      const existingOrderNumbers = new Set(
+        existingOrders.map((order) => order.orderNumber),
+      );
+
+      // Get the lowest order number in our database to establish the range
+      const lowestOrderNumber =
+        existingOrders.length > 0 ? existingOrders[0].orderNumber : 1001;
+
+      logger.info("Database order analysis", {
+        operation: "syncMissingOrdersByNumber",
+        lowestOrderNumber,
+        highestOrderNumber,
+        existingOrdersCount: existingOrderNumbers.size,
+      });
+
+      // Step 3: Identify missing order numbers
+      const missingOrderNumbers: number[] = [];
+      for (
+        let orderNum = lowestOrderNumber;
+        orderNum <= highestOrderNumber;
+        orderNum++
+      ) {
+        if (!existingOrderNumbers.has(orderNum)) {
+          missingOrderNumbers.push(orderNum);
+        }
+      }
+
+      logger.info("Gap analysis complete", {
+        operation: "syncMissingOrdersByNumber",
+        missingOrdersCount: missingOrderNumbers.length,
+        sampleMissingOrders: missingOrderNumbers.slice(0, 10),
+      });
+
+      if (missingOrderNumbers.length === 0) {
+        logger.info("No missing orders found", {
+          operation: "syncMissingOrdersByNumber",
+        });
+        return {
+          totalOrders: 0,
+          processedOrders: 0,
+          fulfilledOrders: 0,
+          customersUpdated: 0,
+          pointsAwarded: 0,
+          errors: 0,
+          duration: Date.now() - startTime,
+          lastOrderDate: null,
+        };
+      }
+
+      // Step 4: Sync missing orders in batches
+      const batchSize = 50; // Process 50 missing orders at a time
+      const batches = [];
+      for (let i = 0; i < missingOrderNumbers.length; i += batchSize) {
+        batches.push(missingOrderNumbers.slice(i, i + batchSize));
+      }
+
+      logger.info("Starting batch processing", {
+        operation: "syncMissingOrdersByNumber",
+        totalBatches: batches.length,
+        batchSize,
+      });
+
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        logger.info("Processing batch", {
+          operation: "syncMissingOrdersByNumber",
+          batchIndex: batchIndex + 1,
+          totalBatches: batches.length,
+          orderNumbers: batch,
+        });
+
+        try {
+          // Create query for specific order numbers
+          const orderNumbersQuery = batch
+            .map((num) => `number:${num}`)
+            .join(" OR ");
+
+          const response = await this.admin.graphql(
+            `#graphql
+              query GetSpecificOrders($query: String!) {
+                orders(first: 250, query: $query) {
+                  edges {
+                    node {
+                      id
+                      name
+                      email
+                      createdAt
+                      updatedAt
+                      number
+                      note
+                      totalPriceSet {
+                        shopMoney {
+                          amount
+                        }
+                      }
+                      subtotalPriceSet {
+                        shopMoney {
+                          amount
+                        }
+                      }
+                      totalTaxSet {
+                        shopMoney {
+                          amount
+                        }
+                      }
+                      totalDiscountsSet {
+                        shopMoney {
+                          amount
+                        }
+                      }
+                      displayFinancialStatus
+                      displayFulfillmentStatus
+                      processedAt
+                      tags
+                      customer {
+                        id
+                        email
+                        firstName
+                        lastName
+                        phone
+                        tags
+                        numberOfOrders
+                        amountSpent {
+                          amount
+                        }
+                        createdAt
+                        defaultAddress {
+                          city
+                          province
+                          country
+                        }
+                      }
+                      lineItems(first: 250) {
+                        edges {
+                          node {
+                            id
+                            title
+                            quantity
+                            originalUnitPriceSet {
+                              shopMoney {
+                                amount
+                              }
+                            }
+                            totalDiscountSet {
+                              shopMoney {
+                                amount
+                              }
+                            }
+                            variant {
+                              id
+                              title
+                              sku
+                              product {
+                                id
+                                title
+                                vendor
+                                productType
+                                tags
+                              }
+                            }
+                            taxable
+                            requiresShipping
+                          }
+                        }
+                      }
+                      shippingLines(first: 10) {
+                        edges {
+                          node {
+                            title
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }`,
+            { variables: { query: orderNumbersQuery } },
+          );
+
+          const responseJson = await response.json();
+          const ordersData = responseJson.data?.orders;
+
+          if (!ordersData) {
+            logger.error("No order data returned from API", {
+              operation: "syncMissingOrdersByNumber",
+              batchIndex: batchIndex + 1,
+            });
+            errors++;
+            continue;
+          }
+
+          const orders = ordersData.edges.map((edge: any) => edge.node);
+          totalOrders += orders.length;
+
+          logger.info("Found orders for batch", {
+            operation: "syncMissingOrdersByNumber",
+            batchIndex: batchIndex + 1,
+            requestedOrders: batch.length,
+            foundOrders: orders.length,
+          });
+
+          // Process each order
+          for (const shopifyOrder of orders) {
+            try {
+              // Convert GraphQL format to REST format for compatibility
+              const restOrder = this.convertGraphQLOrderToRest(shopifyOrder);
+
+              // Find or create customer
+              let customerId: string | undefined;
+              if (shopifyOrder.customer) {
+                const customerShopifyId = parseInt(
+                  shopifyOrder.customer.id.replace(
+                    "gid://shopify/Customer/",
+                    "",
+                  ),
+                );
+
+                // Always update customer data with current Shopify data to ensure accuracy
+                if (!processedCustomers.has(customerShopifyId.toString())) {
+                  const totalSpendDollars = parseFloat(
+                    shopifyOrder.customer.amountSpent?.amount || "0",
+                  );
+                  const totalSpend = totalSpendDollars;
+                  const numberOfOrders =
+                    parseInt(shopifyOrder.customer.numberOfOrders) || 0;
+
+                  logger.info("Updating customer with current Shopify data", {
+                    operation: "syncMissingOrdersByNumber",
+                    customerShopifyId,
+                    totalSpend,
+                    numberOfOrders,
+                  });
+
+                  // Import createOrUpdateCustomer to ensure data consistency
+                  const { createOrUpdateCustomer } = await import(
+                    "./customer.server"
+                  );
+
+                  await createOrUpdateCustomer({
+                    shopifyId: customerShopifyId,
+                    email: shopifyOrder.customer.email,
+                    firstName: shopifyOrder.customer.firstName,
+                    lastName: shopifyOrder.customer.lastName,
+                    totalSpend: totalSpend,
+                    lastOrderDate: new Date(shopifyOrder.createdAt),
+                    admin: this.admin,
+                  });
+
+                  processedCustomers.add(customerShopifyId.toString());
+                  customersUpdated++;
+                }
+
+                // Find customer in database
+                const customer = await prisma.customer.findUnique({
+                  where: { shopifyId: customerShopifyId },
+                });
+                customerId = customer?.id;
+              }
+
+              // Create or update order
+              await createOrUpdateOrder(restOrder, customerId);
+              processedOrders++;
+
+              logger.info("Processed missing order", {
+                operation: "syncMissingOrdersByNumber",
+                orderNumber: shopifyOrder.number,
+                orderDate: shopifyOrder.createdAt,
+              });
+
+              // If order is fulfilled, process points
+              if (shopifyOrder.displayFulfillmentStatus === "FULFILLED") {
+                fulfilledOrders++;
+                try {
+                  const pointsResult = await processFulfilledOrder(
+                    restOrder,
+                    this.admin,
+                  );
+                  if (
+                    pointsResult.bonusPoints &&
+                    pointsResult.bonusPoints > 0
+                  ) {
+                    pointsAwarded += pointsResult.bonusPoints;
+                    logger.info("Awarded points for order", {
+                      operation: "syncMissingOrdersByNumber",
+                      bonusPoints: pointsResult.bonusPoints,
+                      orderNumber: shopifyOrder.number,
+                    });
+                  }
+                } catch (pointsError) {
+                  logger.error("Error processing points for order", {
+                    operation: "syncMissingOrdersByNumber",
+                    orderNumber: shopifyOrder.number,
+                    error:
+                      pointsError instanceof Error
+                        ? pointsError.message
+                        : String(pointsError),
+                  });
+                  errors++;
+                }
+              }
+            } catch (orderError) {
+              logger.error("Error processing order", {
+                operation: "syncMissingOrdersByNumber",
+                orderNumber: shopifyOrder.number,
+                error:
+                  orderError instanceof Error
+                    ? orderError.message
+                    : String(orderError),
+              });
+              errors++;
+            }
+          }
+
+          // Small delay to respect API limits
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        } catch (batchError) {
+          logger.error("Error processing batch", {
+            operation: "syncMissingOrdersByNumber",
+            batchIndex: batchIndex + 1,
+            error:
+              batchError instanceof Error
+                ? batchError.message
+                : String(batchError),
+          });
+          errors++;
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      const newLastOrder = await this.getLastOrderInDatabase();
+
+      logger.info("Smart gap-filling sync complete", {
+        operation: "syncMissingOrdersByNumber",
+        processedOrders,
+        totalOrders,
+        duration,
+        stats: {
+          fulfilledOrders,
+          customersUpdated,
+          pointsAwarded,
+          errors,
+          missingOrdersFound: missingOrderNumbers.length,
+        },
+      });
+
+      return {
+        totalOrders,
+        processedOrders,
+        fulfilledOrders,
+        customersUpdated,
+        pointsAwarded,
+        errors,
+        duration,
+        lastOrderDate: newLastOrder?.toISOString() || null,
+      };
+    } catch (error) {
+      logger.error("Fatal error in smart gap-filling sync", {
+        operation: "syncMissingOrdersByNumber",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get sync statistics
    */
   async getSyncStats(): Promise<{
@@ -702,4 +1146,14 @@ export async function getOrderSyncStats(): Promise<{
 }> {
   const syncService = new OrderSyncService({} as AdminApiContext);
   return await syncService.getSyncStats();
+}
+
+/**
+ * Smart gap-filling sync that identifies missing order numbers and syncs only those
+ */
+export async function syncMissingOrdersByNumber(
+  admin: AdminApiContext,
+): Promise<SyncResult> {
+  const syncService = new OrderSyncService(admin);
+  return await syncService.syncMissingOrdersByNumber();
 }
