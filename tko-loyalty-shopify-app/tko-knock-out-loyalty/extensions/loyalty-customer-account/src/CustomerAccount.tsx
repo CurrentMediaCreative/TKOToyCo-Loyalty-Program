@@ -76,7 +76,7 @@ function CustomerAccountLoyaltyCard() {
       try {
         // Make API call to get customer loyalty data
         const response = await fetch(
-          `/api/public/customer-loyalty?customerEmail=${encodeURIComponent(customer.email || "")}&cartTotal=0`,
+          `https://tkotoyco-loyalty-program.onrender.com/api/public/customer-loyalty?customerEmail=${encodeURIComponent(customer.email || "")}&cartTotal=0`,
           {
             method: "GET",
             headers: {
@@ -162,84 +162,127 @@ function CustomerAccountLoyaltyCard() {
   return (
     <Card>
       <BlockStack spacing="base">
-        <Text emphasis="bold" size="large">
-          {title}
-        </Text>
-
-        {/* Customer Name and Tier */}
+        {/* Header with TKO Branding */}
         <BlockStack spacing="tight">
+          <Text emphasis="bold" size="large">
+            🥊 {title}
+          </Text>
+          <Text appearance="subdued" size="small">
+            TKO Toy Co Loyalty Program
+          </Text>
+        </BlockStack>
+
+        <Divider />
+
+        {/* Customer Name and Tier - Enhanced */}
+        <BlockStack spacing="base">
           <InlineLayout columns={["fill", "auto"]}>
-            <Text emphasis="bold">{customerData.name}</Text>
-            <Text emphasis="bold" appearance="accent">
-              {customerData.tier} Tier
-            </Text>
+            <BlockStack spacing="extraTight">
+              <Text size="small" appearance="subdued">
+                Member
+              </Text>
+              <Text emphasis="bold" size="medium">
+                {customerData.name}
+              </Text>
+            </BlockStack>
+            <BlockStack spacing="extraTight">
+              <Text size="small" appearance="subdued">
+                Current Tier
+              </Text>
+              <Text emphasis="bold" appearance="accent" size="medium">
+                {customerData.tier}
+              </Text>
+            </BlockStack>
           </InlineLayout>
 
+          {/* Points Display - Enhanced */}
           <InlineLayout columns={["fill", "auto"]}>
-            <Text>Total Points:</Text>
-            <Text emphasis="bold">
-              {customerData.totalPoints.toLocaleString()}
-            </Text>
+            <BlockStack spacing="extraTight">
+              <Text size="small" appearance="subdued">
+                Total Points
+              </Text>
+              <Text emphasis="bold" size="large">
+                {customerData.totalPoints.toLocaleString()}
+              </Text>
+            </BlockStack>
+            {showUnfulfilledPoints && customerData.unfulfilledPoints > 0 && (
+              <BlockStack spacing="extraTight">
+                <Text size="small" appearance="subdued">
+                  Pending
+                </Text>
+                <Text emphasis="bold" appearance="subdued">
+                  +{customerData.unfulfilledPoints.toLocaleString()}
+                </Text>
+              </BlockStack>
+            )}
           </InlineLayout>
         </BlockStack>
 
-        {/* Unfulfilled Points */}
+        {/* Unfulfilled Points Details */}
         {showUnfulfilledPoints && customerData.unfulfilledPoints > 0 && (
           <BlockStack spacing="extraTight">
             <Divider />
-            <InlineLayout columns={["fill", "auto"]}>
-              <Text appearance="subdued">Pending Points:</Text>
-              <Text appearance="subdued">
-                {customerData.unfulfilledPoints.toLocaleString()}
-              </Text>
-            </InlineLayout>
-            <Text appearance="subdued" size="small">
-              Points from orders not yet fulfilled
-            </Text>
-          </BlockStack>
-        )}
-
-        {/* Tier Progress */}
-        {showTierProgress && customerData.tierProgress.nextTier && (
-          <BlockStack spacing="tight">
-            <Divider />
-            <Text emphasis="bold">
-              Progress to {customerData.tierProgress.nextTier}
-            </Text>
-
-            <Progress value={customerData.tierProgress.percentage / 100} />
-
-            <InlineLayout columns={["fill", "auto"]}>
-              <Text size="small" appearance="subdued">
-                {customerData.tierProgress.needed.toLocaleString()} points
-                needed
-              </Text>
-              <Text size="small" appearance="subdued">
-                {customerData.tierProgress.percentage.toFixed(1)}%
-              </Text>
-            </InlineLayout>
-          </BlockStack>
-        )}
-
-        {/* Tier Achievement Message */}
-        {showTierProgress && !customerData.tierProgress.nextTier && (
-          <BlockStack spacing="tight">
-            <Divider />
-            <Banner status="success">
-              <Text>
-                🎉 You've reached the highest tier! Keep earning points for
-                exclusive rewards.
+            <Banner status="info">
+              <Text size="small">
+                You have {customerData.unfulfilledPoints.toLocaleString()}{" "}
+                pending points from orders awaiting fulfillment
               </Text>
             </Banner>
           </BlockStack>
         )}
 
-        {/* Additional Info */}
+        {/* Tier Progress - Enhanced */}
+        {showTierProgress && customerData.tierProgress.nextTier && (
+          <BlockStack spacing="base">
+            <Divider />
+            <BlockStack spacing="tight">
+              <InlineLayout columns={["fill", "auto"]}>
+                <Text emphasis="bold" size="medium">
+                  Progress to {customerData.tierProgress.nextTier}
+                </Text>
+                <Text emphasis="bold" appearance="accent">
+                  {customerData.tierProgress.percentage.toFixed(0)}%
+                </Text>
+              </InlineLayout>
+
+              <Progress value={customerData.tierProgress.percentage / 100} />
+
+              <InlineLayout columns={["fill", "auto"]}>
+                <Text size="small" appearance="subdued">
+                  {customerData.tierProgress.needed.toLocaleString()} more
+                  points needed
+                </Text>
+                <Text size="small" appearance="subdued">
+                  {customerData.tierProgress.current.toLocaleString()} current
+                </Text>
+              </InlineLayout>
+            </BlockStack>
+          </BlockStack>
+        )}
+
+        {/* Tier Achievement Message - Enhanced */}
+        {showTierProgress && !customerData.tierProgress.nextTier && (
+          <BlockStack spacing="tight">
+            <Divider />
+            <Banner status="success">
+              <Text emphasis="bold">
+                🏆 Congratulations! You've reached the highest tier!
+              </Text>
+              <Text size="small">
+                Keep earning points for exclusive rewards and benefits.
+              </Text>
+            </Banner>
+          </BlockStack>
+        )}
+
+        {/* Footer Info - Enhanced */}
         <BlockStack spacing="extraTight">
           <Divider />
           <Text size="small" appearance="subdued">
-            Earn 1 point for every $1 spent • Points added when orders are
-            fulfilled
+            💰 Earn 1 point for every $1 spent
+          </Text>
+          <Text size="small" appearance="subdued">
+            ⏱️ Points are added when your orders are fulfilled
           </Text>
         </BlockStack>
       </BlockStack>
