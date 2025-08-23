@@ -668,10 +668,11 @@ export class OrderSyncService {
 
   /**
    * Smart gap-filling sync that identifies missing order numbers and syncs only those
+   * Enhanced with better error handling, smaller batches, and progress reporting
    */
   async syncMissingOrdersByNumber(): Promise<SyncResult> {
     const startTime = Date.now();
-    logger.info("Starting smart gap-filling order sync", {
+    logger.info("Starting enhanced smart gap-filling order sync", {
       operation: "syncMissingOrdersByNumber",
     });
 
@@ -685,25 +686,33 @@ export class OrderSyncService {
     const processedCustomers = new Set<string>();
 
     try {
-      // Step 1: Get the highest order number from Shopify
+      // Step 1: Get the highest order number from Shopify with timeout
       logger.info("Getting highest order number from Shopify", {
         operation: "syncMissingOrdersByNumber",
       });
 
-      const highestOrderResponse = await this.admin.graphql(
-        `#graphql
-          query GetHighestOrderNumber {
-            orders(first: 1, sortKey: CREATED_AT, reverse: true) {
-              edges {
-                node {
-                  number
+      const highestOrderResponse = await Promise.race([
+        this.admin.graphql(
+          `#graphql
+            query GetHighestOrderNumber {
+              orders(first: 1, sortKey: CREATED_AT, reverse: true) {
+                edges {
+                  node {
+                    number
+                  }
                 }
               }
-            }
-          }`,
-      );
+            }`,
+        ),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Timeout getting highest order")),
+            30000,
+          ),
+        ),
+      ]);
 
-      const highestOrderData = await highestOrderResponse.json();
+      const highestOrderData = await (highestOrderResponse as Response).json();
       const highestOrderNumber =
         highestOrderData.data?.orders?.edges?.[0]?.node?.number;
 
@@ -783,26 +792,45 @@ export class OrderSyncService {
         };
       }
 
-      // Step 4: Sync missing orders in batches
-      const batchSize = 50; // Process 50 missing orders at a time
+      // Limit the number of orders to process in one session to prevent timeouts
+      const maxOrdersPerSession = 500;
+      const ordersToProcess = missingOrderNumbers.slice(0, maxOrdersPerSession);
+
+      if (missingOrderNumbers.length > maxOrdersPerSession) {
+        logger.info("Limiting sync to prevent timeout", {
+          operation: "syncMissingOrdersByNumber",
+          totalMissing: missingOrderNumbers.length,
+          processingInThisSession: ordersToProcess.length,
+        });
+      }
+
+      // Step 4: Sync missing orders in smaller batches
+      const batchSize = 10; // Reduced from 50 to 10 for better reliability
       const batches = [];
-      for (let i = 0; i < missingOrderNumbers.length; i += batchSize) {
-        batches.push(missingOrderNumbers.slice(i, i + batchSize));
+      for (let i = 0; i < ordersToProcess.length; i += batchSize) {
+        batches.push(ordersToProcess.slice(i, i + batchSize));
       }
 
       logger.info("Starting batch processing", {
         operation: "syncMissingOrdersByNumber",
         totalBatches: batches.length,
         batchSize,
+        ordersToProcess: ordersToProcess.length,
       });
 
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
         const batch = batches[batchIndex];
-        logger.info("Processing batch", {
+        const progressPercent = Math.round(
+          ((batchIndex + 1) / batches.length) * 100,
+        );
+
+        logger.info("Processing batch with progress", {
           operation: "syncMissingOrdersByNumber",
           batchIndex: batchIndex + 1,
           totalBatches: batches.length,
+          progressPercent,
           orderNumbers: batch,
+          processedSoFar: processedOrders,
         });
 
         try {
@@ -811,115 +839,122 @@ export class OrderSyncService {
             .map((num) => `number:${num}`)
             .join(" OR ");
 
-          const response = await this.admin.graphql(
-            `#graphql
-              query GetSpecificOrders($query: String!) {
-                orders(first: 250, query: $query) {
-                  edges {
-                    node {
-                      id
-                      name
-                      email
-                      createdAt
-                      updatedAt
-                      number
-                      note
-                      totalPriceSet {
-                        shopMoney {
-                          amount
-                        }
-                      }
-                      subtotalPriceSet {
-                        shopMoney {
-                          amount
-                        }
-                      }
-                      totalTaxSet {
-                        shopMoney {
-                          amount
-                        }
-                      }
-                      totalDiscountsSet {
-                        shopMoney {
-                          amount
-                        }
-                      }
-                      displayFinancialStatus
-                      displayFulfillmentStatus
-                      processedAt
-                      tags
-                      customer {
+          // Add timeout to GraphQL request
+          const response = await Promise.race([
+            this.admin.graphql(
+              `#graphql
+                query GetSpecificOrders($query: String!) {
+                  orders(first: 50, query: $query) {
+                    edges {
+                      node {
                         id
+                        name
                         email
-                        firstName
-                        lastName
-                        phone
-                        tags
-                        numberOfOrders
-                        amountSpent {
-                          amount
-                        }
                         createdAt
-                        defaultAddress {
-                          city
-                          province
-                          country
-                        }
-                      }
-                      lineItems(first: 250) {
-                        edges {
-                          node {
-                            id
-                            title
-                            quantity
-                            originalUnitPriceSet {
-                              shopMoney {
-                                amount
-                              }
-                            }
-                            totalDiscountSet {
-                              shopMoney {
-                                amount
-                              }
-                            }
-                            variant {
-                              id
-                              title
-                              sku
-                              product {
-                                id
-                                title
-                                vendor
-                                productType
-                                tags
-                              }
-                            }
-                            taxable
-                            requiresShipping
+                        updatedAt
+                        number
+                        note
+                        totalPriceSet {
+                          shopMoney {
+                            amount
                           }
                         }
-                      }
-                      shippingLines(first: 10) {
-                        edges {
-                          node {
-                            title
+                        subtotalPriceSet {
+                          shopMoney {
+                            amount
+                          }
+                        }
+                        totalTaxSet {
+                          shopMoney {
+                            amount
+                          }
+                        }
+                        totalDiscountsSet {
+                          shopMoney {
+                            amount
+                          }
+                        }
+                        displayFinancialStatus
+                        displayFulfillmentStatus
+                        processedAt
+                        tags
+                        customer {
+                          id
+                          email
+                          firstName
+                          lastName
+                          phone
+                          tags
+                          numberOfOrders
+                          amountSpent {
+                            amount
+                          }
+                          createdAt
+                          defaultAddress {
+                            city
+                            province
+                            country
+                          }
+                        }
+                        lineItems(first: 50) {
+                          edges {
+                            node {
+                              id
+                              title
+                              quantity
+                              originalUnitPriceSet {
+                                shopMoney {
+                                  amount
+                                }
+                              }
+                              totalDiscountSet {
+                                shopMoney {
+                                  amount
+                                }
+                              }
+                              variant {
+                                id
+                                title
+                                sku
+                                product {
+                                  id
+                                  title
+                                  vendor
+                                  productType
+                                  tags
+                                }
+                              }
+                              taxable
+                              requiresShipping
+                            }
+                          }
+                        }
+                        shippingLines(first: 5) {
+                          edges {
+                            node {
+                              title
+                            }
                           }
                         }
                       }
                     }
                   }
-                }
-              }`,
-            { variables: { query: orderNumbersQuery } },
-          );
+                }`,
+              { variables: { query: orderNumbersQuery } },
+            ),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Batch timeout")), 45000),
+            ),
+          ]);
 
-          const responseJson = await response.json();
+          const responseJson = await (response as Response).json();
           const ordersData = responseJson.data?.orders;
 
           if (!ordersData) {
             logger.error("No order data returned from API", {
               operation: "syncMissingOrdersByNumber",
               batchIndex: batchIndex + 1,
+              query: orderNumbersQuery,
             });
             errors++;
             continue;
@@ -933,9 +968,10 @@ export class OrderSyncService {
             batchIndex: batchIndex + 1,
             requestedOrders: batch.length,
             foundOrders: orders.length,
+            progressPercent,
           });
 
-          // Process each order
+          // Process each order with individual error handling
           for (const shopifyOrder of orders) {
             try {
               // Convert GraphQL format to REST format for compatibility
@@ -953,37 +989,42 @@ export class OrderSyncService {
 
                 // Always update customer data with current Shopify data to ensure accuracy
                 if (!processedCustomers.has(customerShopifyId.toString())) {
-                  const totalSpendDollars = parseFloat(
-                    shopifyOrder.customer.amountSpent?.amount || "0",
-                  );
-                  const totalSpend = totalSpendDollars;
-                  const numberOfOrders =
-                    parseInt(shopifyOrder.customer.numberOfOrders) || 0;
+                  try {
+                    const totalSpendDollars = parseFloat(
+                      shopifyOrder.customer.amountSpent?.amount || "0",
+                    );
+                    const totalSpend = totalSpendDollars;
+                    const numberOfOrders =
+                      parseInt(shopifyOrder.customer.numberOfOrders) || 0;
 
-                  logger.info("Updating customer with current Shopify data", {
-                    operation: "syncMissingOrdersByNumber",
-                    customerShopifyId,
-                    totalSpend,
-                    numberOfOrders,
-                  });
+                    // Import createOrUpdateCustomer to ensure data consistency
+                    const { createOrUpdateCustomer } = await import(
+                      "./customer.server"
+                    );
 
-                  // Import createOrUpdateCustomer to ensure data consistency
-                  const { createOrUpdateCustomer } = await import(
-                    "./customer.server"
-                  );
+                    await createOrUpdateCustomer({
+                      shopifyId: customerShopifyId,
+                      email: shopifyOrder.customer.email,
+                      firstName: shopifyOrder.customer.firstName,
+                      lastName: shopifyOrder.customer.lastName,
+                      totalSpend: totalSpend,
+                      lastOrderDate: new Date(shopifyOrder.createdAt),
+                      admin: this.admin,
+                    });
 
-                  await createOrUpdateCustomer({
-                    shopifyId: customerShopifyId,
-                    email: shopifyOrder.customer.email,
-                    firstName: shopifyOrder.customer.firstName,
-                    lastName: shopifyOrder.customer.lastName,
-                    totalSpend: totalSpend,
-                    lastOrderDate: new Date(shopifyOrder.createdAt),
-                    admin: this.admin,
-                  });
-
-                  processedCustomers.add(customerShopifyId.toString());
-                  customersUpdated++;
+                    processedCustomers.add(customerShopifyId.toString());
+                    customersUpdated++;
+                  } catch (customerError) {
+                    logger.error("Error updating customer", {
+                      operation: "syncMissingOrdersByNumber",
+                      customerShopifyId,
+                      error:
+                        customerError instanceof Error
+                          ? customerError.message
+                          : String(customerError),
+                    });
+                    errors++;
+                  }
                 }
 
                 // Find customer in database
@@ -996,12 +1037,6 @@ export class OrderSyncService {
               // Create or update order
               await createOrUpdateOrder(restOrder, customerId);
               processedOrders++;
-
-              logger.info("Processed missing order", {
-                operation: "syncMissingOrdersByNumber",
-                orderNumber: shopifyOrder.number,
-                orderDate: shopifyOrder.createdAt,
-              });
 
               // If order is fulfilled, process points
               if (shopifyOrder.displayFulfillmentStatus === "FULFILLED") {
@@ -1016,11 +1051,6 @@ export class OrderSyncService {
                     pointsResult.bonusPoints > 0
                   ) {
                     pointsAwarded += pointsResult.bonusPoints;
-                    logger.info("Awarded points for order", {
-                      operation: "syncMissingOrdersByNumber",
-                      bonusPoints: pointsResult.bonusPoints,
-                      orderNumber: shopifyOrder.number,
-                    });
                   }
                 } catch (pointsError) {
                   logger.error("Error processing points for order", {
@@ -1047,8 +1077,8 @@ export class OrderSyncService {
             }
           }
 
-          // Small delay to respect API limits
-          await new Promise((resolve) => setTimeout(resolve, 200));
+          // Longer delay to respect API limits and prevent overwhelming
+          await new Promise((resolve) => setTimeout(resolve, 500));
         } catch (batchError) {
           logger.error("Error processing batch", {
             operation: "syncMissingOrdersByNumber",
@@ -1059,13 +1089,19 @@ export class OrderSyncService {
                 : String(batchError),
           });
           errors++;
+
+          // Continue with next batch instead of failing completely
+          continue;
         }
       }
 
       const duration = Date.now() - startTime;
       const newLastOrder = await this.getLastOrderInDatabase();
 
-      logger.info("Smart gap-filling sync complete", {
+      const remainingOrders =
+        missingOrderNumbers.length - ordersToProcess.length;
+
+      logger.info("Enhanced smart gap-filling sync complete", {
         operation: "syncMissingOrdersByNumber",
         processedOrders,
         totalOrders,
@@ -1076,6 +1112,8 @@ export class OrderSyncService {
           pointsAwarded,
           errors,
           missingOrdersFound: missingOrderNumbers.length,
+          processedInThisSession: ordersToProcess.length,
+          remainingOrders,
         },
       });
 
@@ -1090,7 +1128,7 @@ export class OrderSyncService {
         lastOrderDate: newLastOrder?.toISOString() || null,
       };
     } catch (error) {
-      logger.error("Fatal error in smart gap-filling sync", {
+      logger.error("Fatal error in enhanced smart gap-filling sync", {
         operation: "syncMissingOrdersByNumber",
         error: error instanceof Error ? error.message : String(error),
       });

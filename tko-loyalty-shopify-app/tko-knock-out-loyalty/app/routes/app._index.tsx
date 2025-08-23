@@ -104,20 +104,85 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   try {
-    console.log("🔄 Starting smart gap-filling order sync...");
+    console.log("🔄 Starting enhanced smart gap-filling order sync...");
     const syncResult = await syncMissingOrdersByNumber(admin);
+
+    // Create detailed message based on sync results
+    let message = "";
+    if (syncResult.processedOrders === 0) {
+      message = "No missing orders found - your store is fully synced!";
+    } else {
+      const details = [];
+      details.push(`${syncResult.processedOrders} orders processed`);
+
+      if (syncResult.fulfilledOrders > 0) {
+        details.push(`${syncResult.fulfilledOrders} fulfilled orders`);
+      }
+
+      if (syncResult.pointsAwarded > 0) {
+        details.push(`${syncResult.pointsAwarded} points awarded`);
+      }
+
+      if (syncResult.customersUpdated > 0) {
+        details.push(`${syncResult.customersUpdated} customers updated`);
+      }
+
+      if (syncResult.errors > 0) {
+        details.push(`${syncResult.errors} errors encountered`);
+      }
+
+      const duration = Math.round(syncResult.duration / 1000);
+      message = `Smart sync completed in ${duration}s! ${details.join(", ")}.`;
+
+      // Add note about remaining orders if applicable
+      if (syncResult.totalOrders < 500 && syncResult.processedOrders === 500) {
+        message +=
+          " Note: Limited to 500 orders per session to prevent timeouts. Run sync again to process remaining orders.";
+      }
+    }
 
     return json({
       success: true,
-      message: `Smart sync completed! Found and processed ${syncResult.processedOrders} missing orders, awarded ${syncResult.pointsAwarded} points.`,
-      syncResult,
+      message,
+      syncResult: {
+        ...syncResult,
+        duration: Math.round(syncResult.duration / 1000), // Convert to seconds for display
+      },
     });
   } catch (error) {
-    console.error("❌ Manual sync failed:", error);
+    console.error("❌ Enhanced sync failed:", error);
+
+    // Provide more helpful error messages
+    let errorMessage = "Sync failed";
+    if (error instanceof Error) {
+      if (
+        error.message.includes("timeout") ||
+        error.message.includes("Timeout")
+      ) {
+        errorMessage =
+          "Sync timed out - try again or contact support if this persists";
+      } else if (
+        error.message.includes("rate limit") ||
+        error.message.includes("Rate limit")
+      ) {
+        errorMessage =
+          "API rate limit reached - please wait a few minutes before trying again";
+      } else if (
+        error.message.includes("network") ||
+        error.message.includes("Network")
+      ) {
+        errorMessage =
+          "Network error - please check your connection and try again";
+      } else {
+        errorMessage = `Sync failed: ${error.message}`;
+      }
+    }
+
     return json(
       {
         success: false,
-        message: error instanceof Error ? error.message : "Sync failed",
+        message: errorMessage,
+        error: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
     );
