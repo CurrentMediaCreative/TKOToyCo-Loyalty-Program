@@ -1187,6 +1187,374 @@ export async function getOrderSyncStats(): Promise<{
 }
 
 /**
+ * Simple sync that gets ALL orders from Shopify and compares to database
+ * Much simpler approach - just paginate through all orders
+ */
+export async function syncAllOrdersSimple(
+  admin: AdminApiContext,
+): Promise<SyncResult> {
+  const startTime = Date.now();
+  console.log("🔄 Starting simple order sync...");
+
+  let totalOrders = 0;
+  let processedOrders = 0;
+  let fulfilledOrders = 0;
+  let customersUpdated = 0;
+  let pointsAwarded = 0;
+  let errors = 0;
+
+  try {
+    // Get existing order numbers from database
+    const existingOrders = await prisma.order.findMany({
+      select: { orderNumber: true },
+    });
+    const existingOrderNumbers = new Set(
+      existingOrders.map((order) => order.orderNumber),
+    );
+
+    console.log(`📊 Found ${existingOrderNumbers.size} orders in database`);
+
+    // Simple pagination through ALL orders
+    let hasNextPage = true;
+    let cursor: string | null = null;
+    let batchCount = 0;
+
+    while (hasNextPage && batchCount < 20) {
+      // Limit to 20 batches (1000 orders max)
+      batchCount++;
+      console.log(`📦 Processing batch ${batchCount}...`);
+
+      const response: any = await admin.graphql(
+        `
+        query GetOrders${cursor ? `($cursor: String!)` : ""} {
+          orders(first: 50${cursor ? `, after: $cursor` : ""}) {
+            edges {
+              node {
+                id
+                name
+                number
+                createdAt
+                updatedAt
+                displayFinancialStatus
+                displayFulfillmentStatus
+                totalPriceSet {
+                  shopMoney {
+                    amount
+                  }
+                }
+                subtotalPriceSet {
+                  shopMoney {
+                    amount
+                  }
+                }
+                totalTaxSet {
+                  shopMoney {
+                    amount
+                  }
+                }
+                totalDiscountsSet {
+                  shopMoney {
+                    amount
+                  }
+                }
+                email
+                tags
+                customer {
+                  id
+                  email
+                  firstName
+                  lastName
+                  numberOfOrders
+                  amountSpent {
+                    amount
+                  }
+                  createdAt
+                }
+                lineItems(first: 50) {
+                  edges {
+                    node {
+                      id
+                      title
+                      quantity
+                      originalUnitPriceSet {
+                        shopMoney {
+                          amount
+                        }
+                      }
+                      variant {
+                        id
+                        title
+                        sku
+                        product {
+                          id
+                          title
+                          vendor
+                          productType
+                          tags
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              cursor
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      `,
+        cursor ? { variables: { cursor } } : {},
+      );
+
+      const responseJson: any = await response.json();
+      const ordersData: any = responseJson.data?.orders;
+
+      if (!ordersData) {
+        console.error("❌ No order data returned");
+        break;
+      }
+
+      const orders = ordersData.edges.map((edge: any) => edge.node);
+      totalOrders += orders.length;
+
+      console.log(`📋 Found ${orders.length} orders in batch ${batchCount}`);
+
+      // Process each order
+      for (const shopifyOrder of orders) {
+        try {
+          // Check if we already have this order
+          if (existingOrderNumbers.has(shopifyOrder.number)) {
+            continue; // Skip orders we already have
+          }
+
+          // Convert to REST format and create order
+          const restOrder = convertGraphQLOrderToRest(shopifyOrder);
+
+          // Handle customer
+          let customerId: string | undefined;
+          if (shopifyOrder.customer) {
+            const customerShopifyId = parseInt(
+              shopifyOrder.customer.id.replace("gid://shopify/Customer/", ""),
+            );
+
+            // Import createOrUpdateCustomer
+            const { createOrUpdateCustomer } = await import(
+              "./customer.server"
+            );
+
+            await createOrUpdateCustomer({
+              shopifyId: customerShopifyId,
+              email: shopifyOrder.customer.email,
+              firstName: shopifyOrder.customer.firstName,
+              lastName: shopifyOrder.customer.lastName,
+              totalSpend: parseFloat(
+                shopifyOrder.customer.amountSpent?.amount || "0",
+              ),
+              lastOrderDate: new Date(shopifyOrder.createdAt),
+              admin: admin,
+            });
+
+            const customer = await prisma.customer.findUnique({
+              where: { shopifyId: customerShopifyId },
+            });
+            customerId = customer?.id;
+            customersUpdated++;
+          }
+
+          // Create order
+          await createOrUpdateOrder(restOrder, customerId);
+          processedOrders++;
+
+          // Process points if fulfilled
+          if (shopifyOrder.displayFulfillmentStatus === "FULFILLED") {
+            fulfilledOrders++;
+            try {
+              const pointsResult = await processFulfilledOrder(
+                restOrder,
+                admin,
+              );
+              if (pointsResult.bonusPoints && pointsResult.bonusPoints > 0) {
+                pointsAwarded += pointsResult.bonusPoints;
+              }
+            } catch (pointsError) {
+              console.error(
+                `❌ Points error for order ${shopifyOrder.number}:`,
+                pointsError,
+              );
+              errors++;
+            }
+          }
+        } catch (orderError) {
+          console.error(
+            `❌ Error processing order ${shopifyOrder.number}:`,
+            orderError,
+          );
+          errors++;
+        }
+      }
+
+      // Update pagination
+      hasNextPage = ordersData.pageInfo.hasNextPage;
+      cursor = ordersData.pageInfo.endCursor;
+
+      console.log(
+        `✅ Batch ${batchCount} complete. Processed ${processedOrders} new orders so far.`,
+      );
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(
+      `🎉 Simple sync complete! Processed ${processedOrders} new orders in ${Math.round(duration / 1000)}s`,
+    );
+
+    return {
+      totalOrders,
+      processedOrders,
+      fulfilledOrders,
+      customersUpdated,
+      pointsAwarded,
+      errors,
+      duration,
+      lastOrderDate: null,
+    };
+  } catch (error) {
+    console.error("❌ Simple sync failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * Helper function to convert GraphQL order to REST format
+ */
+function convertGraphQLOrderToRest(graphqlOrder: any): ShopifyOrder {
+  return {
+    id: parseInt(graphqlOrder.id.replace("gid://shopify/Order/", "")),
+    email: graphqlOrder.email,
+    created_at: graphqlOrder.createdAt,
+    updated_at: graphqlOrder.updatedAt,
+    number: graphqlOrder.number,
+    note: graphqlOrder.note || "",
+    token: "",
+    gateway: "",
+    test: false,
+    total_price: graphqlOrder.totalPriceSet?.shopMoney?.amount || "0",
+    subtotal_price: graphqlOrder.subtotalPriceSet?.shopMoney?.amount || "0",
+    total_weight: 0,
+    total_tax: graphqlOrder.totalTaxSet?.shopMoney?.amount || "0",
+    taxes_included: false,
+    currency: "CAD",
+    financial_status:
+      graphqlOrder.displayFinancialStatus?.toLowerCase() || "pending",
+    confirmed: true,
+    total_discounts: graphqlOrder.totalDiscountsSet?.shopMoney?.amount || "0",
+    buyer_accepts_marketing: false,
+    name: graphqlOrder.name,
+    referring_site: "",
+    landing_site: "",
+    cancelled_at: undefined,
+    cancel_reason: undefined,
+    total_price_usd: undefined,
+    checkout_token: undefined,
+    reference: undefined,
+    user_id: undefined,
+    location_id: undefined,
+    source_identifier: undefined,
+    source_url: "",
+    processed_at: graphqlOrder.createdAt,
+    device_id: undefined,
+    phone: undefined,
+    customer_locale: undefined,
+    app_id: undefined,
+    browser_ip: undefined,
+    landing_site_ref: undefined,
+    order_number: graphqlOrder.number,
+    discount_applications: [],
+    discount_codes: [],
+    note_attributes: [],
+    payment_gateway_names: [],
+    processing_method: "",
+    checkout_id: undefined,
+    source_name: "",
+    fulfillment_status: graphqlOrder.displayFulfillmentStatus?.toLowerCase(),
+    tax_lines: [],
+    tags: graphqlOrder.tags?.join(",") || "",
+    contact_email: graphqlOrder.email,
+    order_status_url: "",
+    presentment_currency: "CAD",
+    total_line_items_price_set: {},
+    total_discounts_set: {},
+    total_shipping_price_set: {},
+    subtotal_price_set: {},
+    total_price_set: {},
+    total_tax_set: {},
+    line_items:
+      graphqlOrder.lineItems?.edges?.map((edge: any) => ({
+        id: edge.node.id.replace("gid://shopify/LineItem/", ""),
+        product_id:
+          edge.node.variant?.product?.id?.replace(
+            "gid://shopify/Product/",
+            "",
+          ) || "",
+        variant_id:
+          edge.node.variant?.id?.replace("gid://shopify/ProductVariant/", "") ||
+          "",
+        title: edge.node.title,
+        quantity: edge.node.quantity,
+        price: edge.node.originalUnitPriceSet?.shopMoney?.amount || "0",
+        total_discount: "0",
+        product_exists: true,
+        variant_title: edge.node.variant?.title,
+        vendor: edge.node.variant?.product?.vendor,
+        product_type: edge.node.variant?.product?.productType,
+        tags: edge.node.variant?.product?.tags?.join(","),
+        sku: edge.node.variant?.sku,
+        taxable: true,
+        requires_shipping: true,
+        fulfillment_service: "",
+      })) || [],
+    shipping_lines: [],
+    billing_address: null,
+    shipping_address: null,
+    fulfillments: [],
+    client_details: null,
+    refunds: [],
+    customer: graphqlOrder.customer
+      ? {
+          id: parseInt(
+            graphqlOrder.customer.id.replace("gid://shopify/Customer/", ""),
+          ),
+          email: graphqlOrder.customer.email,
+          accepts_marketing: false,
+          created_at: graphqlOrder.customer.createdAt,
+          updated_at: graphqlOrder.customer.createdAt,
+          first_name: graphqlOrder.customer.firstName,
+          last_name: graphqlOrder.customer.lastName,
+          orders_count: parseInt(graphqlOrder.customer.numberOfOrders) || 0,
+          state: "enabled",
+          total_spent: graphqlOrder.customer.amountSpent?.amount || "0",
+          last_order_id: undefined,
+          note: undefined,
+          verified_email: true,
+          multipass_identifier: undefined,
+          tax_exempt: false,
+          phone: undefined,
+          tags: "",
+          last_order_name: undefined,
+          currency: "CAD",
+          accepts_marketing_updated_at: graphqlOrder.customer.createdAt,
+          marketing_opt_in_level: undefined,
+          tax_exemptions: [],
+          admin_graphql_api_id: graphqlOrder.customer.id,
+          default_address: undefined,
+        }
+      : undefined,
+  };
+}
+
+/**
  * Smart gap-filling sync that identifies missing order numbers and syncs only those
  */
 export async function syncMissingOrdersByNumber(

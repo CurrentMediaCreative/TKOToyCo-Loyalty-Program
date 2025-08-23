@@ -42,7 +42,7 @@ import { authenticate } from "../shopify.server";
 import { CustomerLoyaltyCard } from "../components/CustomerLoyaltyCard";
 import { serializeBigInt } from "../utils/serialization";
 import { getDashboardMetrics } from "../services/dashboardMetrics.server";
-import { syncMissingOrdersByNumber } from "../services/orderSync.server";
+import { syncAllOrdersSimple } from "../services/orderSync.server";
 import { getTiers } from "../services/tier.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -104,8 +104,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
   try {
-    console.log("🔄 Starting enhanced smart gap-filling order sync...");
-    const syncResult = await syncMissingOrdersByNumber(admin);
+    console.log("🔄 Starting simple order sync...");
+    const syncResult = await syncAllOrdersSimple(admin);
 
     // Create detailed message based on sync results
     let message = "";
@@ -208,6 +208,10 @@ export default function Index() {
   // Store credit sync fetcher
   const storeCreditFetcher = useFetcher();
   const isStoreCreditSyncing = storeCreditFetcher.state === "submitting";
+
+  // Shopify API test fetcher
+  const shopifyTestFetcher = useFetcher();
+  const isShopifyTesting = shopifyTestFetcher.state === "submitting";
 
   const handleViewCustomer = useCallback((customer: any) => {
     setSelectedCustomer(customer);
